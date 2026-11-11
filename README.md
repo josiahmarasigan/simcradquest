@@ -17,6 +17,10 @@ Phone  ──opens──▶  App shell (GitHub Pages, /docs)
 - **App shell** (`/docs`): the screens, pet art and logic. Static files, so GitHub Pages can host them. A service worker keeps them on the phone, so the app opens instantly, works from the home screen, and still shows the last saved pet with no signal.
 - **Server** (`/apps-script`): checks who is calling, applies the game rules, and reads and writes the Sheet. Nothing private lives in this repo.
 
+## Quizzes
+
+Nine starter quizzes (121 questions) are added by setup: X-ray, CT and ultrasound (technical and knowledge), radiation protection, physics, and SIMC policies (Draft 0). Answers stay on the server; the app only sees the questions. Passing pays coins and XP at once, no review needed. Edit questions in the **Questions** tab, results are in **QuizAttempts**, and `QUIZ_TRIES_PER_DAY` in Config limits retries.
+
 ## Repo layout
 
 | Path | What it is |

@@ -113,6 +113,24 @@
   .bar{flex:1;height:10px;background:var(--off)}
   .bar > div{height:10px}
   .flag{color:var(--red);font-size:18px}
+  .weak{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .hit{font-family:'Press Start 2P',monospace;font-size:8px;color:var(--ground);background:var(--pink);padding:5px 6px;flex-shrink:0}
+  .bossbtn{font-family:'Press Start 2P',monospace;font-size:9px;background:var(--pink);color:var(--ground);border:0;box-shadow:0 4px 0 #a03a63;padding:12px 10px;min-height:44px;cursor:pointer}
+  .bossbtn:active{transform:translateY(3px);box-shadow:none}
+  .steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:20px;line-height:1.15}
+  .bossline{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#2a1030;border:3px solid var(--pink);padding:8px 10px}
+  .seg2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;border:3px solid var(--line)}
+  .seg2 button{font-family:'Press Start 2P',monospace;font-size:9px;min-height:44px;border:0;background:var(--panel);color:var(--muted);cursor:pointer}
+  .seg2 button[aria-pressed="true"]{background:var(--gold);color:var(--ground)}
+  .qopts{display:flex;flex-direction:column;gap:8px}
+  .qopt{font-family:'VT323',monospace;font-size:20px;line-height:1.15;text-align:left;background:var(--panel);color:var(--text);border:3px solid var(--line);padding:10px 12px;min-height:48px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+  .qopt .k{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--gold);padding-top:4px;flex-shrink:0}
+  .qopt[aria-pressed="true"]{border-color:var(--gold);background:#2b2a14}
+  .qtext{font-size:22px;line-height:1.15}
+  .rv{border-left:4px solid var(--line);padding:6px 10px;background:var(--panel);display:flex;flex-direction:column;gap:4px}
+  .rv.ok{border-left-color:var(--green)}
+  .rv.no{border-left-color:var(--red)}
+  .score{font-family:'Press Start 2P',monospace;font-size:22px;text-align:center;line-height:1.4}
   .boss{background:#2a1030;border:4px solid var(--pink);box-shadow:4px 4px 0 #050712;padding:12px;display:flex;flex-direction:column;gap:8px}
   .boss .segs{grid-template-columns:repeat(20,minmax(0,1fr));gap:2px}
   .boss .seg{height:10px;background:#4a2050}
@@ -212,6 +230,7 @@
   var S = null;               // state from server
   var view = 'pet';
   var questTab = 'ALL';
+  var questMode = 'QUESTS';   // QUESTS or QUIZZES
   var shopTab = 'REAL';
   var confirmId = null;       // shop item waiting for a second tap
   var busy = 0;
@@ -393,6 +412,10 @@
     h += '<button type="button" class="btn gold" id="questBtn">FIND A QUEST</button>';
     h += '</div>';
 
+    if (bossLive()) {
+      h += '<div class="bossline"><span style="font-size:19px;line-height:1.1;color:#ffc1d8">Boss: ' + esc(S.boss.name) + ' · ' + Math.round(S.boss.hp / S.boss.maxHp * 100) + '% HP</span>';
+      h += '<button type="button" class="bossbtn" data-bossguide="1">HOW TO HELP</button></div>';
+    }
     h += '<div class="card" style="display:flex;flex-direction:column;gap:8px"><div class="px label">WHOLE-PERSON STATS</div>';
     S.stats.forEach(function (s) {
       h += '<div class="statrow"><span style="color:' + s.color + '">' + esc(s.name).toUpperCase() + '</span>';
@@ -434,22 +457,143 @@
   }
 
   // ───────── quests ─────────
+  // ── boss helpers ──
+  var STAT_NAME = { SKILL: 'Skill', SHIELD: 'Shield', WISDOM: 'Wisdom', HEART: 'Heart', VITAL: 'Vitality' };
+  function bossWeak() {
+    if (!S.boss) return [];
+    var list = String(S.boss.stats || 'ALL').split(',').map(function (x) { return x.trim().toUpperCase(); }).filter(String);
+    return list.indexOf('ALL') >= 0 || !list.length ? ['SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'] : list;
+  }
+  function bossLive() { return !!(S.boss && S.boss.status === 'ACTIVE' && S.boss.hp > 0 && (S.boss.daysLeft === null || S.boss.daysLeft === undefined || S.boss.daysLeft > 0)); }
+  /** Does work in this stat damage the boss right now? */
+  function hitsBoss(stat) { return bossLive() && bossWeak().indexOf(String(stat).toUpperCase()) >= 0; }
+  function hitTag(stat, xp) { return hitsBoss(stat) ? '<span class="hit" title="Damage to the boss">BOSS −' + xp + ' HP</span>' : ''; }
+  function weakChips() {
+    return bossWeak().map(function (k) { return '<span class="px tag" style="background:' + (STAT_COLORS[k] || '#e8f0ff') + '">' + k + '</span>'; }).join('');
+  }
+  /** The quests and quizzes this player can do now that hurt the boss, biggest hits first. */
+  function bossMoves() {
+    var moves = [];
+    S.quests.forEach(function (q) { if (q.status === 'open' && hitsBoss(q.stat)) moves.push({ kind: 'quest', id: q.id, title: q.title, stat: q.stat, xp: q.xp, how: 'Quest · counts when approved' }); });
+    (S.quizzes || []).forEach(function (z) { if (z.status === 'open' && hitsBoss(z.stat)) moves.push({ kind: 'quiz', id: z.id, title: z.title, stat: z.stat, xp: z.xp, how: 'Quiz · hits as soon as you pass' }); });
+    return moves.sort(function (a, b) { return b.xp - a.xp; });
+  }
+
   function bossCard(compact) {
     var b = S.boss, filled = Math.ceil(b.hp / b.maxHp * 20), pct = Math.round(b.hp / b.maxHp * 100);
     var h = '<div class="boss"><div class="row"><span class="px" style="font-size:9px;color:var(--pink)">BOSS RAID</span>';
-    h += '<span style="font-size:18px;color:#ffc1d8">' + (b.status === 'DEFEATED' ? 'DEFEATED!' : (b.daysLeft != null ? b.daysLeft + ' days left' : '')) + '</span></div>';
+    h += '<span style="font-size:18px;color:#ffc1d8">' + (b.status === 'DEFEATED' ? 'DEFEATED!' : (b.daysLeft != null ? (b.daysLeft > 0 ? b.daysLeft + ' days left' : 'Time is up') : '')) + '</span></div>';
     h += '<div class="px" style="font-size:12px;line-height:1.5">' + esc(b.name).toUpperCase() + '</div>';
     h += '<div class="segs" role="img" aria-label="Boss health ' + pct + ' percent">' + segs(filled, 20, '#ff6fa3', '#4a2050') + '</div>';
-    h += '<div style="font-size:18px;color:#ffc1d8">HP ' + pct + '% · Everyone gets ' + b.reward + 'c when it falls.' + (compact ? '' : ' ' + esc(b.description)) + '</div></div>';
+    if (b.status === 'DEFEATED') {
+      h += '<div style="font-size:18px;color:#ffc1d8">Your team won! Everyone got ' + b.reward + 'c.</div></div>';
+      return h;
+    }
+    h += '<div style="font-size:18px;color:#ffc1d8">' + b.hp + ' / ' + b.maxHp + ' HP · Everyone gets ' + b.reward + 'c when it falls.' + (compact ? '' : ' ' + esc(b.description)) + '</div>';
+    h += '<div class="row"><span class="weak"><span class="px" style="font-size:8px;color:#ffc1d8">WEAK TO</span>' + weakChips() + '</span>';
+    h += '<button type="button" class="bossbtn" data-bossguide="1">HOW TO DEFEAT</button></div></div>';
+    return h;
+  }
+
+  function showBossGuide() {
+    var b = S.boss;
+    if (!b) return;
+    var weakNames = bossWeak().map(function (k) { return STAT_NAME[k] || k; });
+    var h = '<h2 id="ovTitle">HOW TO DEFEAT ' + esc(b.name).toUpperCase() + '</h2>';
+    h += '<div class="segs" role="img" aria-label="Boss health ' + Math.round(b.hp / b.maxHp * 100) + ' percent" style="grid-template-columns:repeat(20,minmax(0,1fr));gap:2px">' + segs(Math.ceil(b.hp / b.maxHp * 20), 20, '#ff6fa3', '#4a2050') + '</div>';
+    h += '<div class="meta" style="color:#ffc1d8">' + b.hp + ' of ' + b.maxHp + ' HP left' + (b.daysLeft != null ? ' · ' + b.daysLeft + ' days left' : '') + '</div>';
+    h += '<ol class="steps">';
+    h += '<li>The boss is weak to <b>' + esc(weakNames.join(' and ')) + '</b>. Only work in ' + (weakNames.length > 1 ? 'these stats' : 'this stat') + ' hurts it.</li>';
+    h += '<li>Do a quest or quiz with a <span class="hit">BOSS −HP</span> tag. It hits the boss for the XP it gives.</li>';
+    h += '<li>Quests hit when an admin <b>approves</b> them. Quizzes hit the moment you <b>pass</b>.</li>';
+    h += '<li>When HP reaches 0, <b>everyone</b> on staff gets ' + b.reward + ' coins, even people who couldn\'t help this time.</li>';
+    h += '</ol>';
+    h += '<div class="meta">If time runs out first, nobody loses anything. A new boss comes next month.</div>';
+    var moves = bossMoves();
+    h += '<div class="px label">YOUR BEST HITS RIGHT NOW</div>';
+    if (!moves.length) h += '<div class="meta">You\'ve done every boss quest and quiz open to you for now. Cheer on your team!</div>';
+    moves.slice(0, 6).forEach(function (m) {
+      h += '<div class="item"><div class="row"><span class="title">' + esc(m.title) + '</span><span class="hit">−' + m.xp + ' HP</span></div>';
+      h += '<div class="row"><span class="meta">' + esc(m.how) + '</span>';
+      h += '<button type="button" class="btn green sm" data-bossgo="' + m.kind + ':' + esc(m.id) + '">' + (m.kind === 'quiz' ? 'START' : 'SUBMIT') + '</button></div></div>';
+    });
+    if (moves.length > 6) h += '<div class="meta">…and ' + (moves.length - 6) + ' more on the Quests screen.</div>';
+    h += '<button type="button" class="btn ghost" data-ov="close">GOT IT</button>';
+    openOverlay({ type: 'bossguide' }, h);
+  }
+  /** Show the guide once per boss, the first time someone opens Quests while it's active. */
+  var bossGuideSeen = {};
+  function maybeAutoBossGuide() {
+    if (!bossLive() || O) return;
+    var key = 'rq_boss_' + S.boss.name;
+    var seen = bossGuideSeen[key];
+    try { seen = seen || localStorage.getItem(key) === '1'; localStorage.setItem(key, '1'); } catch (e) { }
+    bossGuideSeen[key] = true;
+    if (!seen) showBossGuide();
+  }
+
+  function renderBossQuests() {
+    var h = '<div class="tabs" role="tablist" aria-label="Filter quests">';
+    ['ALL', 'BOSS', 'SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'].forEach(function (t) {
+      var c = t === 'ALL' ? '#e8f0ff' : t === 'BOSS' ? '#ff6fa3' : STAT_COLORS[t], on = questTab === t;
+      h += '<button type="button" role="tab" class="tab" data-qtab="' + t + '" aria-selected="' + on + '" style="color:' + c + ';' + (on ? 'background:' + c : '') + '">' + t + '</button>';
+    });
+    h += '</div>';
+    var moves = bossMoves();
+    if (!moves.length) return h + '<div class="hint">Nothing left that hurts the boss for you right now. Nice work!</div>';
+    moves.forEach(function (m) {
+      var c = STAT_COLORS[m.stat] || '#e8f0ff';
+      h += '<div class="item"><div class="row"><span class="title">' + esc(m.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(m.stat) + '</span></div>';
+      h += '<div class="row"><span class="meta">' + esc(m.how) + '</span><span class="hit">−' + m.xp + ' HP</span></div>';
+      h += '<button type="button" class="btn green sm" style="align-self:flex-end" data-bossgo="' + m.kind + ':' + esc(m.id) + '">' + (m.kind === 'quiz' ? 'START QUIZ' : 'SUBMIT') + '</button></div>';
+    });
+    return h;
+  }
+
+  function modeSwitch() {
+    var openQuizzes = (S.quizzes || []).filter(function (z) { return z.status === 'open'; }).length;
+    var h = '<div class="seg2" role="group" aria-label="Quests or quizzes">';
+    h += '<button type="button" data-qmode="QUESTS" aria-pressed="' + (questMode === 'QUESTS') + '">QUESTS</button>';
+    h += '<button type="button" data-qmode="QUIZZES" aria-pressed="' + (questMode === 'QUIZZES') + '">QUIZZES' + (openQuizzes ? ' · ' + openQuizzes : '') + '</button>';
+    return h + '</div>';
+  }
+
+  function renderQuizzes() {
+    var h = '<div class="tabs" role="tablist" aria-label="Filter quizzes">';
+    ['ALL', 'SKILL', 'SHIELD', 'WISDOM', 'HEART'].forEach(function (t) {
+      var c = t === 'ALL' ? '#e8f0ff' : STAT_COLORS[t], on = questTab === t;
+      h += '<button type="button" role="tab" class="tab" data-qtab="' + t + '" aria-selected="' + on + '" style="color:' + c + ';' + (on ? 'background:' + c : '') + '">' + t + '</button>';
+    });
+    h += '</div>';
+    var order = { open: 0, limit: 1, done: 2 };
+    var list = (S.quizzes || []).filter(function (z) { return questTab === 'ALL' || z.stat === questTab; })
+      .sort(function (a, b) { return order[a.status] - order[b.status]; });
+    if (!list.length) h += '<div class="hint">No quizzes here right now.</div>';
+    list.forEach(function (z) {
+      var c = STAT_COLORS[z.stat] || '#e8f0ff';
+      h += '<div class="item"><div class="row"><span class="title">' + esc(z.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(z.stat) + '</span></div>';
+      if (z.description) h += '<div class="meta">' + esc(z.description) + '</div>';
+      h += '<div class="meta">' + z.count + ' questions · pass ' + z.pass + '% · <span style="color:var(--gold)">' + z.coins + 'c</span> · ' + z.xp + ' XP · ' + esc(REPEAT_LABEL[z.repeat] || z.repeat) + '</div>';
+      if (z.status === 'open' && hitsBoss(z.stat)) h += '<div class="row" style="justify-content:flex-start">' + hitTag(z.stat, z.xp) + '<span class="meta" style="color:#ffc1d8">as soon as you pass</span></div>';
+      h += '<div class="row"><span class="meta">' + (z.status === 'open' ? z.triesLeft + ' tr' + (z.triesLeft === 1 ? 'y' : 'ies') + ' left today' + (z.best !== null && z.best !== undefined ? ' · best ' + z.best + '%' : '') : '') + '</span>';
+      if (z.status === 'open') h += '<button type="button" class="btn green sm" data-quiz="' + esc(z.id) + '">START</button>';
+      else if (z.status === 'done') h += '<span class="px status" style="color:var(--green)">PASSED</span>';
+      else h += '<span class="px status" style="color:var(--muted)">TOMORROW</span>';
+      h += '</div></div>';
+    });
+    h += '<div class="hint">Quizzes are marked instantly. Pass to earn coins and XP, no photo needed.</div>';
     return h;
   }
 
   function renderQuests() {
     var h = '';
     if (S.boss) h += bossCard(true);
+    h += modeSwitch();
+    if (questMode === 'QUIZZES') return h + renderQuizzes();
+    if (questTab === 'BOSS') return h + renderBossQuests();
     h += '<div class="tabs" role="tablist" aria-label="Filter quests">';
-    ['ALL', 'SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'].forEach(function (t) {
-      var c = t === 'ALL' ? '#e8f0ff' : STAT_COLORS[t], on = questTab === t;
+    (bossLive() ? ['ALL', 'BOSS', 'SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'] : ['ALL', 'SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL']).forEach(function (t) {
+      var c = t === 'ALL' ? '#e8f0ff' : t === 'BOSS' ? '#ff6fa3' : STAT_COLORS[t], on = questTab === t;
       h += '<button type="button" role="tab" class="tab" data-qtab="' + t + '" aria-selected="' + on + '" style="color:' + c + ';' + (on ? 'background:' + c : '') + '">' + t + '</button>';
     });
     h += '</div>';
@@ -466,6 +610,7 @@
       if (q.spotsLeft !== null && q.spotsLeft !== undefined) extra.push(q.spotsLeft + ' spot' + (q.spotsLeft === 1 ? '' : 's') + ' left');
       if (extra.length) h += '<div class="meta" style="color:var(--gold)">' + extra.join(' · ') + '</div>';
       if (q.infoLink) h += '<a class="btn ghost sm" style="align-self:flex-start;font-size:8px" target="_blank" rel="noopener" href="' + esc(q.infoLink) + '">OPEN QUEST LINK ↗</a>';
+      if (q.status === 'open' && hitsBoss(q.stat)) h += '<div class="row" style="justify-content:flex-start">' + hitTag(q.stat, q.xp) + '<span class="meta" style="color:#ffc1d8">once an admin approves it</span></div>';
       h += '<div class="row"><span class="meta">' + esc(q.proof) + ' · <span style="color:var(--gold)">' + q.coins + 'c</span> · ' + q.xp + ' XP · ' + esc(REPEAT_LABEL[q.repeat] || q.repeat) + '</span>';
       if (q.status === 'open') h += '<button type="button" class="btn green sm" data-submit="' + esc(q.id) + '">SUBMIT</button>';
       else if (q.status === 'pending') h += '<span class="px status" style="color:var(--gold)">IN REVIEW</span>';
@@ -591,6 +736,79 @@
     openOverlay({ type: 'rename' }, h, '#hName');
   }
 
+  // take a quiz
+  function bossGo(code) {
+    var kind = code.split(':')[0], id = code.slice(kind.length + 1);
+    if (kind === 'quiz') { questMode = 'QUIZZES'; if (view !== 'quests') go('quests'); startQuiz(id); return; }
+    var q = S.quests.filter(function (x) { return x.id === id; })[0];
+    questMode = 'QUESTS'; if (view !== 'quests') go('quests');
+    if (q) showSubmit(q);
+  }
+
+  function startQuiz(id) {
+    var z = (S.quizzes || []).filter(function (x) { return x.id === id; })[0];
+    if (!z) return;
+    run('startQuiz', [TOKEN, id], function (d) {
+      openOverlay({ type: 'quiz', d: d, i: 0, ans: d.questions.map(function () { return -1; }), quit: false, level: S.level }, '<div id="quizBox" style="display:contents"></div>');
+      drawQuiz();
+    }, function (m) { toast(m, true); render(); });
+  }
+  function drawQuiz() {
+    var o = O, d = o.d, q = d.questions[o.i], last = o.i === d.questions.length - 1, answered = o.ans[o.i] >= 0;
+    var done = o.ans.filter(function (a) { return a >= 0; }).length;
+    var h = '<h2 id="ovTitle">' + esc(d.title).toUpperCase() + '</h2>';
+    h += '<div class="row px" style="font-size:9px"><span>QUESTION ' + (o.i + 1) + ' / ' + d.questions.length + '</span><span style="color:var(--muted)">PASS ' + d.pass + '%</span></div>';
+    h += '<div class="segs" style="grid-template-columns:repeat(' + d.questions.length + ',minmax(0,1fr))" aria-hidden="true">';
+    o.ans.forEach(function (a, k) { h += '<div class="seg" style="height:8px;background:' + (k === o.i ? 'var(--gold)' : a >= 0 ? 'var(--green)' : 'var(--off)') + '"></div>'; });
+    h += '</div>';
+    h += '<div class="qtext" id="qText" tabindex="-1">' + esc(q.text) + '</div>';
+    h += '<div class="qopts" role="group" aria-labelledby="qText">';
+    q.options.forEach(function (opt, k) {
+      h += '<button type="button" class="qopt" data-qopt="' + k + '" aria-pressed="' + (o.ans[o.i] === k) + '"><span class="k">' + 'ABCD'.charAt(k) + '</span><span>' + esc(opt) + '</span></button>';
+    });
+    h += '</div>';
+    h += '<div class="err" id="ovErr" role="alert"></div>';
+    h += '<div class="grid2">';
+    h += '<button type="button" class="btn ghost" data-ov="qback"' + (o.i === 0 ? ' disabled' : '') + '>BACK</button>';
+    if (last) h += '<button type="button" class="btn green" data-ov="qsubmit">SUBMIT ' + done + '/' + d.questions.length + '</button>';
+    else h += '<button type="button" class="btn ' + (answered ? 'green' : 'gold') + '" data-ov="qnext">' + (answered ? 'NEXT' : 'SKIP') + '</button>';
+    h += '</div>';
+    h += '<button type="button" class="btn ' + (o.quit ? 'gold' : 'ghost') + ' sm" data-ov="qquit">' + (o.quit ? 'TAP AGAIN TO QUIT (COUNTS AS A TRY)' : 'QUIT QUIZ') + '</button>';
+    $('quizBox').innerHTML = h;
+  }
+  function focusIn(sel) { var el = $('overlay').querySelector(sel); if (el) { try { el.focus(); } catch (e) { } } }
+  function submitQuizNow(btn) {
+    var o = O;
+    var blank = o.ans.filter(function (a) { return a < 0; }).length;
+    if (blank && !o.confirmBlank) { o.confirmBlank = true; $('ovErr').textContent = blank + ' unanswered. Tap SUBMIT again to hand it in anyway.'; return; }
+    btn.disabled = true; btn.textContent = 'MARKING...';
+    run('submitQuiz', [TOKEN, o.d.attemptId, o.ans], function (r) {
+      var lvBefore = o.level;
+      S = r.state; render();
+      if (O !== o) return;
+      showQuizResult(r, lvBefore);
+    }, function (m) { if (O === o) { btn.disabled = false; btn.textContent = 'SUBMIT'; $('ovErr').textContent = m; } else toast(m, true); });
+  }
+  function showQuizResult(r, lvBefore) {
+    var h = '<h2 id="ovTitle">' + esc(r.title).toUpperCase() + '</h2>';
+    h += '<div class="score" style="color:' + (r.passed ? 'var(--green)' : 'var(--red)') + '">' + r.score + ' / ' + r.total + '<br>' + (r.passed ? 'PASSED!' : 'NOT YET') + '</div>';
+    if (r.paid) h += '<div class="big" style="color:var(--gold)">+' + r.paid.coins + 'c · +' + r.paid.xp + ' XP</div>';
+    else if (r.alreadyEarned) h += '<div class="meta" style="text-align:center">You already earned this quiz\'s reward for now.</div>';
+    else h += '<div class="meta" style="text-align:center">You need ' + r.pass + '% to pass. Read the answers below and try again.</div>';
+    if (S.level > lvBefore) h += '<div class="big" style="color:var(--gold)">LEVEL UP! LV ' + lvBefore + ' ▶ LV ' + S.level + '</div>';
+    h += '<div class="px label">ANSWERS</div><div class="news">';
+    r.review.forEach(function (q, k) {
+      h += '<div class="rv ' + (q.ok ? 'ok' : 'no') + '"><div style="font-size:19px"><span class="px" style="font-size:9px;color:' + (q.ok ? 'var(--green)' : 'var(--red)') + '">' + (q.ok ? 'RIGHT' : 'WRONG') + '</span> ' + (k + 1) + '. ' + esc(q.text) + '</div>';
+      if (!q.ok) h += '<div class="meta">Your answer: ' + (q.chosen >= 0 ? esc(q.options[q.chosen]) : '(skipped)') + '</div>';
+      h += '<div class="meta" style="color:var(--green)">Answer: ' + esc(q.options[q.correct]) + '</div>';
+      if (q.explanation) h += '<div class="meta">' + esc(q.explanation) + '</div>';
+      h += '</div>';
+    });
+    h += '</div><button type="button" class="btn green" data-ov="close">DONE</button>';
+    openOverlay({ type: 'quizresult' }, h);
+    Snd.play(r.passed ? (S.level > lvBefore ? 'level' : 'coin') : 'bad');
+  }
+
   // submit a quest
   function showSubmit(q) {
     var h = '<h2 id="ovTitle">SUBMIT QUEST</h2>';
@@ -676,6 +894,7 @@
     if (S.me.pinRequired && !A.pin) { showPin(''); return; }
     if (A.tab === 'REVIEW') adminRun('adminGetQueue', ['PENDING'], function (r) { A.queue = r; S.pendingReviews = r.pendingCount; render(); });
     else if (A.tab === 'HISTORY') adminRun('adminGetQueue', ['DONE'], function (r) { A.history = r; render(); });
+    else if (A.tab === 'QUIZZES') adminRun('adminGetQuizzes', [], function (r) { A.quizzes = r; render(); });
     else adminRun('adminGetQuests', [], function (r) { A.quests = r; render(); });
   }
   function showPin(msg) {
@@ -701,13 +920,14 @@
     if (S.me.pinRequired && !A.pin) return '<div class="card meta">Admin is locked.</div><button type="button" class="btn gold" data-arefresh="1">ENTER PIN</button>';
     var h = '<div class="tabs" role="tablist" aria-label="Admin sections">';
     var pend = A.queue ? ' ' + A.queue.pendingCount : '';
-    [['REVIEW', 'REVIEW' + pend], ['HISTORY', 'HISTORY'], ['QUESTS', 'QUESTS']].forEach(function (t) {
+    [['REVIEW', 'REVIEW' + pend], ['HISTORY', 'HISTORY'], ['QUESTS', 'QUESTS'], ['QUIZZES', 'QUIZZES']].forEach(function (t) {
       var on = A.tab === t[0];
       h += '<button type="button" role="tab" class="tab" data-atab="' + t[0] + '" aria-selected="' + on + '" style="color:#ffc93c;' + (on ? 'background:#ffc93c' : '') + '">' + t[1] + '</button>';
     });
     h += '<button type="button" class="tab" data-arefresh="1" style="color:var(--muted);margin-left:auto">REFRESH</button></div>';
     if (A.tab === 'REVIEW') h += renderQueue(A.queue, true);
     else if (A.tab === 'HISTORY') h += renderQueue(A.history, false);
+    else if (A.tab === 'QUIZZES') h += renderAdminQuizzes();
     else h += A.edit ? renderQuestEditor() : renderQuestList();
     return h;
   }
@@ -779,6 +999,22 @@
     else h += '<div class="hint blink">LOADING...</div>';
     h += '<button type="button" class="btn ghost" data-ov="close">CLOSE</button>';
     openOverlay({ type: 'zoom' }, h);
+  }
+
+  function renderAdminQuizzes() {
+    if (!A.quizzes) return '<div class="hint blink">LOADING...</div>';
+    var h = '<div class="card meta">Questions live in the <b>Questions</b> tab of the Sheet: add, edit or untick Active there. Each quiz draws a random set every time. Who took what is in the <b>QuizAttempts</b> tab.</div>';
+    A.quizzes.forEach(function (z) {
+      var c = STAT_COLORS[z.stat] || '#e8f0ff';
+      h += '<div class="item">';
+      h += '<div class="row"><span class="title"' + (z.active ? '' : ' style="color:var(--muted)"') + '>' + esc(z.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(z.stat) + '</span></div>';
+      h += '<div class="meta">' + esc(z.id) + ' · ' + esc(z.roles) + ' · ' + z.pool + ' questions in bank, ' + Math.min(z.pool, z.perAttempt) + ' per try · pass ' + z.pass + '% · ' + z.coins + 'c · ' + z.xp + ' XP</div>';
+      h += '<div class="meta">' + (z.attempts ? z.attempts + ' tries · ' + z.passRate + '% passed · ' + z.passedBy + ' staff passed' : 'No tries yet') + '</div>';
+      if (z.pool < z.perAttempt) h += '<div class="flag">! Fewer questions in the bank than asked per try.</div>';
+      h += '<div class="row"><span class="px status" style="color:' + (z.active ? 'var(--green)' : 'var(--muted)') + '">' + (z.active ? 'LIVE' : 'OFF') + '</span>';
+      h += '<button type="button" class="btn sm ' + (z.active ? 'ghost' : 'green') + '" style="font-size:8px" data-ztoggle="' + esc(z.id) + '" data-on="' + (z.active ? '0' : '1') + '">' + (z.active ? 'TURN OFF' : 'TURN ON') + '</button></div></div>';
+    });
+    return h;
   }
 
   function renderQuestList() {
@@ -861,7 +1097,7 @@
     });
     if (view === 'admin') loadProofs();
   }
-  function go(v) { view = v; confirmId = null; bubble = ''; render(); window.scrollTo(0, 0); if (v === 'admin') adminLoad(); }
+  function go(v) { view = v; confirmId = null; bubble = ''; render(); window.scrollTo(0, 0); if (v === 'admin') adminLoad(); if (v === 'quests') maybeAutoBossGuide(); }
 
   // ───────── events ─────────
   $('sndBtn').setAttribute('aria-pressed', Snd.on() ? 'true' : 'false');
@@ -875,15 +1111,27 @@
       e.preventDefault();
       var b = $('overlay').querySelector('[data-ov="hatch"],[data-ov="rename"],[data-ov="pin"]'); if (b) b.click();
     }
-    if (e.key === 'Escape' && O && O.type !== 'hatch') { if (O.type === 'pin') { closeOverlay(); go('pet'); } else closeOverlay(); }
+    if (e.key === 'Escape' && O && O.type !== 'hatch' && O.type !== 'quiz') { if (O.type === 'pin') { closeOverlay(); go('pet'); } else closeOverlay(); }
   });
   $('overlay').addEventListener('click', function (e) {
     var t = e.target.closest ? e.target.closest('button') : null;
     if (!t) return;
+    var qo = t.getAttribute('data-qopt');
+    if (qo !== null && O && O.type === 'quiz') { O.ans[O.i] = Number(qo); O.quit = false; O.confirmBlank = false; drawQuiz(); focusIn('[data-qopt="' + qo + '"]'); Snd.play('tap'); return; }
     var rm = t.getAttribute('data-rmphoto');
     if (rm !== null && O && O.type === 'submit') { O.photos.splice(Number(rm), 1); drawPhotos(); return; }
+    if (t.getAttribute('data-bossgo')) { var bgo2 = t.getAttribute('data-bossgo'); closeOverlay(); bossGo(bgo2); return; }
     var ov = t.getAttribute('data-ov');
     if (!ov) return;
+    if (ov === 'qnext' && O.type === 'quiz') { O.i++; O.quit = false; drawQuiz(); focusIn('#qText'); return; }
+    if (ov === 'qback' && O.type === 'quiz') { O.i = Math.max(0, O.i - 1); O.quit = false; drawQuiz(); focusIn('#qText'); return; }
+    if (ov === 'qsubmit' && O.type === 'quiz') { submitQuizNow(t); return; }
+    if (ov === 'qquit' && O.type === 'quiz') {
+      if (!O.quit) { O.quit = true; drawQuiz(); return; }
+      var dq = O.d; closeOverlay();
+      run('submitQuiz', [TOKEN, dq.attemptId, []], function (r) { S = r.state; render(); toast('Quiz ended. ' + (r.state.quizzes.filter(function (z) { return z.id === dq.quizId; })[0] || { triesLeft: 0 }).triesLeft + ' tries left today.'); }, function () { refresh(); });
+      return;
+    }
     if (ov === 'close') { closeOverlay(); if (view === 'pet') render(); return; }
     if (ov === 'send') { sendSubmit(); return; }
     if (ov === 'pin') { sendPin(); return; }
@@ -917,6 +1165,10 @@
 
     // quests + shop
     var qt = t.getAttribute('data-qtab'); if (qt) { questTab = qt; render(); return; }
+    if (t.getAttribute('data-bossguide')) { showBossGuide(); return; }
+    var bg = t.getAttribute('data-bossgo'); if (bg) { bossGo(bg); return; }
+    var qm = t.getAttribute('data-qmode'); if (qm) { questMode = qm; if ((questTab === 'VITAL' || questTab === 'BOSS') && qm === 'QUIZZES') questTab = 'ALL'; render(); return; }
+    var qz = t.getAttribute('data-quiz'); if (qz) { t.disabled = true; t.textContent = '...'; startQuiz(qz); return; }
     var sub = t.getAttribute('data-submit');
     if (sub) { var q = S.quests.filter(function (x) { return x.id === sub; })[0]; if (q) showSubmit(q); return; }
     var st = t.getAttribute('data-stab'); if (st) { shopTab = st; confirmId = null; render(); return; }
@@ -966,6 +1218,12 @@
       A.edit = data; // keep what was typed if saving fails
       t.disabled = true;
       adminRun('adminSaveQuest', [data], function (r) { A.quests = r.quests; A.edit = null; render(); toast(r.message); refresh(); });
+      return;
+    }
+    var zt = t.getAttribute('data-ztoggle');
+    if (zt) {
+      t.disabled = true;
+      adminRun('adminToggleQuiz', [zt, t.getAttribute('data-on') === '1'], function (r) { A.quizzes = r.quizzes; render(); toast(r.message); refresh(); });
       return;
     }
     var tog = t.getAttribute('data-qtoggle');

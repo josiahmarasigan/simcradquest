@@ -19,13 +19,14 @@
  * The Ledger is append-only: never edit or delete rows. Corrections = new rows (Type ADJUST).
  */
 
-var VERSION = '3.0';
+var VERSION = '3.1';
 
 // ───────────────────────────── constants ─────────────────────────────
 
 var TAB = {
   CONFIG: 'Config', STAFF: 'Staff', QUESTS: 'Quests', SUBS: 'Submissions', LEDGER: 'Ledger',
-  SHOP: 'Shop', REDEEM: 'Redemptions', PETS: 'Pets', BOSS: 'Boss'
+  SHOP: 'Shop', REDEEM: 'Redemptions', PETS: 'Pets', BOSS: 'Boss',
+  QUIZZES: 'Quizzes', QUESTIONS: 'Questions', ATTEMPTS: 'QuizAttempts'
 };
 
 // New columns are always added at the END so an existing sheet keeps working after re-running setup.
@@ -41,7 +42,10 @@ var HEADERS = {
   Redemptions: ['Timestamp', 'Email', 'Name', 'ItemID', 'ItemName', 'Price', 'Fulfilled', 'Refund',
     'Status', 'HandledBy', 'HandledAt', 'Note'],
   Pets: ['Email', 'Food', 'FoodUpdatedAt', 'Cosmetics', 'LastPetAt', 'Room', 'LastSeenAt', 'Hatched'],
-  Boss: ['BossID', 'Name', 'MaxHP', 'HP', 'Stats', 'RewardCoins', 'StartDate', 'EndDate', 'Status', 'Description']
+  Boss: ['BossID', 'Name', 'MaxHP', 'HP', 'Stats', 'RewardCoins', 'StartDate', 'EndDate', 'Status', 'Description'],
+  Quizzes: ['QuizID', 'Title', 'Category', 'Stat', 'Roles', 'Coins', 'XP', 'Questions', 'PassPercent', 'Repeat', 'Active', 'Description'],
+  Questions: ['QuizID', 'QID', 'Question', 'A', 'B', 'C', 'D', 'Answer', 'Explanation', 'Active', 'Source'],
+  QuizAttempts: ['Timestamp', 'Email', 'Name', 'QuizID', 'QuizTitle', 'Score', 'Total', 'Percent', 'Passed', 'CoinsAwarded', 'XPAwarded', 'Seconds', 'Wrong']
 };
 
 var STATS = [
@@ -57,7 +61,7 @@ var MAX_PHOTOS = 3;
 var MAX_PHOTO_CHARS = 1500000; // base64 length, about 1.1 MB per photo after the app shrinks it
 
 // Tabs that rarely change are kept in the script cache for a few minutes so the app opens faster.
-var CACHED_TABS = { Config: 1, Staff: 1, Quests: 1, Shop: 1, Boss: 1 };
+var CACHED_TABS = { Config: 1, Staff: 1, Quests: 1, Shop: 1, Boss: 1, Quizzes: 1, Questions: 1 };
 var CACHE_SECONDS = 300;
 
 // ───────────────────────────── menu ─────────────────────────────
@@ -353,16 +357,23 @@ function setup() {
   boxes(TAB.STAFF, ['Active', 'OnLeave', 'IsAdmin']);
   boxes(TAB.QUESTS, ['Active']);
   boxes(TAB.SHOP, ['Active']);
+  boxes(TAB.QUIZZES, ['Active']);
+  boxes(TAB.QUESTIONS, ['Active']);
 
   // Dropdowns that keep data tidy
   var statRule = SpreadsheetApp.newDataValidation().requireValueInList(STATS.map(function (s) { return s.key; }), true).build();
   sheet_(TAB.QUESTS).getRange(2, HEADERS.Quests.indexOf('Stat') + 1, 500, 1).setDataValidation(statRule);
+  sheet_(TAB.QUIZZES).getRange(2, HEADERS.Quizzes.indexOf('Stat') + 1, 200, 1).setDataValidation(statRule);
+  var ansRule = SpreadsheetApp.newDataValidation().requireValueInList(['A', 'B', 'C', 'D'], true).build();
+  sheet_(TAB.QUESTIONS).getRange(2, HEADERS.Questions.indexOf('Answer') + 1, 500, 1).setDataValidation(ansRule);
   var repRule = SpreadsheetApp.newDataValidation().requireValueInList(REPEATS, true).build();
   sheet_(TAB.QUESTS).getRange(2, HEADERS.Quests.indexOf('Repeat') + 1, 500, 1).setDataValidation(repRule);
+  sheet_(TAB.QUIZZES).getRange(2, HEADERS.Quizzes.indexOf('Repeat') + 1, 200, 1).setDataValidation(repRule);
   var roleRule = SpreadsheetApp.newDataValidation().requireValueInList(['Tech', 'Radiologist', 'Admin'], true).build();
   sheet_(TAB.STAFF).getRange(2, HEADERS.Staff.indexOf('Role') + 1, 500, 1).setDataValidation(roleRule);
 
   seedIfEmpty_();
+  seedQuizzes_();
   clearAllCaches_();
 
   // Make sure the owner can open the Admin screen
@@ -405,6 +416,7 @@ function seedIfEmpty_() {
     ['APPROVERS', me, 'Emails allowed to tick Approve in the Submissions tab (blank = anyone with edit access)'],
     ['NOTIFY_STAFF', 'TRUE', 'Email staff when a quest is approved or rejected'],
     ['DAILY_DIGEST', 'TRUE', 'Email admins each morning if submissions are waiting'],
+    ['QUIZ_TRIES_PER_DAY', 3, 'How many times a day each person may attempt the same quiz'],
     ['PROOF_FOLDER_ID', '', 'Filled by setup: the private Drive folder where proof photos are saved'],
     ['APP_URL', '', 'Where the app is hosted, e.g. https://yourname.github.io/rad-quest/ (needed for personal links)']
   ].forEach(function (r) { if (!have[r[0]]) appendObj_(TAB.CONFIG, { Key: r[0], Value: r[1], Notes: r[2] }); });
@@ -781,7 +793,8 @@ function api_() {
   return {
     open: openApp_, getState: getState, feedPet: feedPet, buyItem: buyItem, petPet: petPet, namePet: namePet,
     submitQuest: submitQuest, adminLogin: adminLogin, adminGetQueue: adminGetQueue, adminGetProof: adminGetProof,
-    adminReview: adminReview, adminGetQuests: adminGetQuests, adminToggleQuest: adminToggleQuest, adminSaveQuest: adminSaveQuest
+    adminReview: adminReview, adminGetQuests: adminGetQuests, adminToggleQuest: adminToggleQuest, adminSaveQuest: adminSaveQuest,
+    startQuiz: startQuiz, submitQuiz: submitQuiz, adminGetQuizzes: adminGetQuizzes, adminToggleQuiz: adminToggleQuiz
   };
 }
 
@@ -940,7 +953,7 @@ function buildState_(me) {
     teams[t].members++;
   });
   ledger.forEach(function (l) {
-    if (l.Type !== 'EARN' || new Date(l.Timestamp) < seasonStart) return;
+    if ((l.Type !== 'EARN' && l.Type !== 'QUIZ') || new Date(l.Timestamp) < seasonStart) return;
     var t = teamOf[norm_(l.Email)];
     if (!t) return;
     teams[t].xp += num_(l.XP);
@@ -964,7 +977,7 @@ function buildState_(me) {
       food: food, max: max, mood: onLeave ? 'On holiday. Hunger paused.' : moodFor_(food, max),
       form: petForm_(level, vals), cosmetics: owned, room: pet.Room || '', pettedToday: pettedToday
     },
-    quests: quests, mySubs: mySubs, shop: shop, requests: myRequests, boss: bossOut, teams: teamList,
+    quests: quests, quizzes: quizzesForState_(me, now, tz), mySubs: mySubs, shop: shop, requests: myRequests, boss: bossOut, teams: teamList,
     maxPhotos: MAX_PHOTOS
   };
 }
@@ -1264,4 +1277,377 @@ function showBalances() {
 function showAdminPin() {
   clearAllCaches_();
   SpreadsheetApp.getUi().alert('Admin PIN: ' + cfg_('ADMIN_PIN', '(none set)') + '\n\nChange it in the Config tab.');
+}
+
+// ───────────────────────────── quizzes ─────────────────────────────
+// Answers never leave the server. startQuiz sends questions with shuffled options; submitQuiz grades them.
+// Passing a quiz pays coins + XP straight away (once per repeat period). No admin review needed.
+
+var QUIZ_SECONDS = 45 * 60; // an unfinished quiz expires after 45 minutes
+
+function quizIsLive_(z) { return z && z.QuizID && truthy_(z.Active); }
+
+function findQuiz_(id) {
+  return readTable_(TAB.QUIZZES).filter(function (z) { return z.QuizID === id; })[0] || null;
+}
+
+function quizPool_(quizId) {
+  return readTable_(TAB.QUESTIONS).filter(function (q) {
+    return q.QuizID === quizId && truthy_(q.Active) && String(q.Question || '').trim() && /^[ABCD]$/i.test(String(q.Answer || '').trim());
+  });
+}
+
+function quizOptions_(q) {
+  return ['A', 'B', 'C', 'D'].filter(function (L) { return String(q[L] === undefined || q[L] === null ? '' : q[L]).trim() !== ''; });
+}
+
+function shuffle_(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+/** { status: 'open' | 'done' | 'limit', triesLeft, best } for one person and quiz. */
+function quizStatusFor_(email, z, now, attempts, tz) {
+  var key = periodKey_(z.Repeat, now, tz);
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var limit = Math.max(1, num_(cfg_('QUIZ_TRIES_PER_DAY', 3)) || 3);
+  var done = false, triesToday = 0, best = null;
+  attempts.forEach(function (a) {
+    if (a.QuizID !== z.QuizID || norm_(a.Email) !== email) return;
+    var when = new Date(a.Timestamp);
+    if (Utilities.formatDate(when, tz, 'yyyy-MM-dd') === today) triesToday++;
+    if (key !== null && periodKey_(z.Repeat, when, tz) === key) {
+      if (truthy_(a.Passed)) done = true;
+      best = best === null ? num_(a.Percent) : Math.max(best, num_(a.Percent));
+    }
+  });
+  var left = Math.max(0, limit - triesToday);
+  return { status: done ? 'done' : (left === 0 ? 'limit' : 'open'), triesLeft: left, best: best };
+}
+
+function quizzesForState_(me, now, tz) {
+  var email = norm_(me.Email);
+  var attempts = readTable_(TAB.ATTEMPTS);
+  return readTable_(TAB.QUIZZES)
+    .filter(function (z) { return quizIsLive_(z) && questFitsRole_(z.Roles, me.Role); })
+    .map(function (z) {
+      var pool = quizPool_(z.QuizID).length;
+      if (!pool) return null;
+      var st = quizStatusFor_(email, z, now, attempts, tz);
+      return {
+        id: z.QuizID, title: z.Title, category: z.Category, stat: z.Stat, coins: num_(z.Coins), xp: num_(z.XP),
+        count: Math.min(pool, Math.max(1, num_(z.Questions) || 10)), pass: num_(z.PassPercent) || 80,
+        repeat: z.Repeat, description: z.Description, status: st.status, triesLeft: st.triesLeft, best: st.best
+      };
+    })
+    .filter(Boolean);
+}
+
+function startQuiz(token, quizId) {
+  var me = requireStaff_(token);
+  var email = norm_(me.Email);
+  var now = new Date();
+  var z = findQuiz_(String(quizId || ''));
+  if (!quizIsLive_(z)) throw new Error('That quiz is not open right now.');
+  if (!questFitsRole_(z.Roles, me.Role)) throw new Error('That quiz is not for your role.');
+  var st = quizStatusFor_(email, z, now, readTable_(TAB.ATTEMPTS), tz_());
+  if (st.status === 'done') throw new Error('You already passed this quiz. It reopens later.');
+  if (st.status === 'limit') throw new Error('No tries left today for this quiz. Come back tomorrow!');
+  var pool = quizPool_(z.QuizID);
+  if (!pool.length) throw new Error('This quiz has no questions yet.');
+  var n = Math.min(pool.length, Math.max(1, num_(z.Questions) || 10));
+  var picked = shuffle_(pool).slice(0, n).map(function (q) { return { q: q, order: shuffle_(quizOptions_(q)) }; });
+  var id = Utilities.getUuid ? Utilities.getUuid() : randomToken_() + randomToken_();
+  var record = { e: email, z: z.QuizID, t: now.getTime(), items: picked.map(function (p) { return { id: String(p.q.QID), o: p.order }; }) };
+  var c = cache_();
+  if (!c) throw new Error('Quizzes are unavailable right now. Try again in a minute.');
+  c.put('quiz_' + id, JSON.stringify(record), QUIZ_SECONDS);
+  return {
+    attemptId: id, quizId: z.QuizID, title: z.Title, pass: num_(z.PassPercent) || 80, coins: num_(z.Coins), xp: num_(z.XP),
+    questions: picked.map(function (p) { return { text: String(p.q.Question), options: p.order.map(function (L) { return String(p.q[L]); }) }; })
+  };
+}
+
+/** answers: for each question, the index of the option the player picked (in the order it was shown), or -1. */
+function submitQuiz(token, attemptId, answers) {
+  var me = requireStaff_(token);
+  var email = norm_(me.Email);
+  var c = cache_();
+  var key = 'quiz_' + String(attemptId || '');
+  var raw = c ? c.get(key) : null;
+  if (!raw) throw new Error('This quiz has expired. Start it again from the Quests screen.');
+  var rec = JSON.parse(raw);
+  if (rec.e !== email) throw new Error('This quiz belongs to someone else.');
+  c.remove(key); // one submission per attempt
+  answers = Object.prototype.toString.call(answers) === '[object Array]' ? answers : [];
+
+  var byId = {};
+  readTable_(TAB.QUESTIONS).forEach(function (q) { if (q.QuizID === rec.z) byId[String(q.QID)] = q; });
+  var score = 0, total = 0, wrong = [];
+  var review = rec.items.map(function (it, i) {
+    var q = byId[it.id];
+    if (!q) return null; // question deleted meanwhile: not counted
+    total++;
+    var pick = Math.round(num_(answers[i]));
+    var chosen = (pick >= 0 && pick < it.o.length) ? it.o[pick] : '';
+    var right = String(q.Answer).trim().toUpperCase();
+    var ok = chosen === right;
+    if (ok) score++; else wrong.push(it.id);
+    return {
+      text: String(q.Question), options: it.o.map(function (L) { return String(q[L]); }),
+      chosen: chosen ? pick : -1, correct: it.o.indexOf(right), ok: ok, explanation: String(q.Explanation || '')
+    };
+  }).filter(Boolean);
+  if (!total) throw new Error('This quiz changed while you were taking it. Please start again.');
+
+  return withLock_(function () {
+    var now = new Date();
+    var z = findQuiz_(rec.z);
+    var title = z ? z.Title : rec.z;
+    var pass = z ? (num_(z.PassPercent) || 80) : 80;
+    var percent = Math.round(score / total * 100);
+    var passed = percent >= pass;
+    var st = z ? quizStatusFor_(email, z, now, readTable_(TAB.ATTEMPTS), tz_()) : { status: 'open' };
+    var paid = null;
+    if (passed && z && st.status !== 'done') {
+      paid = { coins: num_(z.Coins), xp: num_(z.XP) };
+      appendObj_(TAB.LEDGER, {
+        Timestamp: now, Email: email, Type: 'QUIZ', Ref: z.QuizID, Coins: paid.coins, XP: paid.xp, Stat: z.Stat, Note: 'Quiz passed: ' + title
+      });
+      damageBoss_(z.Stat, paid.xp, now);
+    }
+    appendObj_(TAB.ATTEMPTS, {
+      Timestamp: now, Email: email, Name: me.Name, QuizID: rec.z, QuizTitle: title, Score: score, Total: total, Percent: percent,
+      Passed: passed, CoinsAwarded: paid ? paid.coins : 0, XPAwarded: paid ? paid.xp : 0,
+      Seconds: Math.round((now.getTime() - rec.t) / 1000), Wrong: wrong.join(', ')
+    });
+    return {
+      title: title, score: score, total: total, percent: percent, pass: pass, passed: passed, paid: paid,
+      alreadyEarned: passed && !paid, review: review, state: buildState_(me)
+    };
+  });
+}
+
+function adminGetQuizzes(token, pin) {
+  requireAdmin_(token, pin);
+  var attempts = readTable_(TAB.ATTEMPTS);
+  return readTable_(TAB.QUIZZES).filter(function (z) { return z.QuizID; }).map(function (z) {
+    var mine = attempts.filter(function (a) { return a.QuizID === z.QuizID; });
+    var passes = mine.filter(function (a) { return truthy_(a.Passed); });
+    var people = {};
+    passes.forEach(function (a) { people[norm_(a.Email)] = 1; });
+    return {
+      id: z.QuizID, title: z.Title, category: z.Category, stat: z.Stat, roles: z.Roles, active: truthy_(z.Active),
+      pool: quizPool_(z.QuizID).length, perAttempt: num_(z.Questions) || 10, pass: num_(z.PassPercent) || 80,
+      coins: num_(z.Coins), xp: num_(z.XP), attempts: mine.length,
+      passRate: mine.length ? Math.round(passes.length / mine.length * 100) : null, passedBy: Object.keys(people).length
+    };
+  });
+}
+
+function adminToggleQuiz(token, pin, id, active) {
+  requireAdmin_(token, pin);
+  withLock_(function () {
+    var z = findQuiz_(String(id || ''));
+    if (!z) throw new Error('Quiz not found.');
+    setCell_(TAB.QUIZZES, z._row, 'Active', !!active);
+  });
+  return { quizzes: adminGetQuizzes(token, pin), message: active ? 'Quiz turned ON.' : 'Quiz turned OFF.' };
+}
+
+/** Bulk-add rows to a tab in one write (used to seed the question bank). */
+function appendRows_(name, objs) {
+  if (!objs.length) return;
+  var sh = sheet_(name);
+  var head = HEADERS[name];
+  var start = lastDataRow_(sh) + 1;
+  var need = start + objs.length - 1;
+  if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows() + 50);
+  sh.getRange(start, 1, objs.length, head.length).setValues(objs.map(function (o) {
+    return head.map(function (h) { return o[h] === undefined ? '' : o[h]; });
+  }));
+  touch_(name);
+}
+
+function seedQuizzes_() {
+  var bank = quizBank_();
+  if (readSheet_(TAB.QUIZZES).length === 0) {
+    appendRows_(TAB.QUIZZES, bank.quizzes.map(function (z) {
+      return { QuizID: z[0], Title: z[1], Category: z[2], Stat: z[3], Roles: z[4], Coins: z[5], XP: z[6], Questions: z[7], PassPercent: z[8], Repeat: z[9], Active: true, Description: z[10] };
+    }));
+  }
+  if (readSheet_(TAB.QUESTIONS).length === 0) {
+    var counter = {};
+    appendRows_(TAB.QUESTIONS, bank.questions.map(function (q) {
+      counter[q[0]] = (counter[q[0]] || 0) + 1;
+      var n = counter[q[0]];
+      var row = { QuizID: q[0], QID: q[0] + '-' + (n < 10 ? '0' : '') + n, Question: q[1], Answer: 'ABCD'.charAt(q[3]), Explanation: q[4], Active: true, Source: q[5] || '' };
+      q[2].forEach(function (opt, i) { row['ABCD'.charAt(i)] = opt; });
+      return row;
+    }));
+  }
+}
+
+// ───────────────────────────── starter quiz bank ─────────────────────────────
+// Used once by setup to fill the Quizzes and Questions tabs. After that, edit questions in the Sheet.
+// Each question: [QuizID, question, [options], index of the correct option (0 = first), explanation]
+
+function quizBank_() {
+  var P = 'SIMC-RAD-P&P-001 Draft 0';
+  var quizzes = [
+    // ID, Title, Category, Stat, Roles, Coins, XP, Questions per attempt, Pass %, Repeat, Description
+    ['QZ-XRT', 'X-ray: technique & positioning', 'X-ray technical', 'SKILL', 'Tech', 30, 50, 8, 75, 'weekly', 'Exposure factors, grids, markers, decubitus views and digital exposure indicators.'],
+    ['QZ-XRK', 'X-ray: image knowledge', 'X-ray knowledge', 'WISDOM', 'Tech,Radiologist', 30, 50, 8, 75, 'weekly', 'Anatomy, views and common findings on plain films.'],
+    ['QZ-CTT', 'CT: protocols & technique', 'CT technical', 'SKILL', 'Tech', 30, 50, 8, 75, 'weekly', 'Pitch, windows, contrast timing, artifacts and patient centering.'],
+    ['QZ-CTK', 'CT: image knowledge', 'CT knowledge', 'WISDOM', 'Tech,Radiologist', 30, 50, 8, 75, 'weekly', 'Hounsfield units, head CT, stroke, PE, appendicitis and contrast reactions.'],
+    ['QZ-UST', 'Ultrasound: scanning technique', 'Ultrasound technical', 'SKILL', 'Tech', 30, 50, 8, 75, 'weekly', 'Transducers, gain, focus, Doppler, preparation and artifacts.'],
+    ['QZ-USK', 'Ultrasound: image knowledge', 'Ultrasound knowledge', 'WISDOM', 'Tech,Radiologist', 30, 50, 8, 75, 'weekly', 'Cysts, stones, the biliary tree, FAST, aorta, DVT and early pregnancy.'],
+    ['QZ-RP', 'Radiation protection', 'Radiation protection', 'SHIELD', 'ALL', 35, 60, 8, 75, 'weekly', 'Principles, dose limits, dosimeters, PPE and pregnancy.'],
+    ['QZ-PHY', 'Radiologic physics', 'Physics', 'WISDOM', 'Tech,Radiologist', 30, 50, 8, 75, 'weekly', 'How X-rays, CT numbers and ultrasound work.'],
+    ['QZ-POL', 'SIMC policies & procedures', 'Policies', 'HEART', 'ALL', 40, 60, 10, 80, 'weekly', 'Our department P&P (Draft 0): requests, ID, contrast, results, reprints, incidents.']
+  ];
+
+  var q = [
+    // ── X-ray technical ──
+    ['QZ-XRT', 'Raising kVp while keeping everything else the same will mainly:', ['Increase beam penetration and lower image contrast', 'Decrease penetration and raise contrast', 'Change only the number of photons, not their energy', 'Make the focal spot smaller'], 0, 'kVp controls beam energy. Higher kVp penetrates more and gives a longer grey scale, so contrast falls.'],
+    ['QZ-XRT', 'Increasing kVp by about 15% has roughly the same effect on receptor exposure as:', ['Doubling the mAs', 'Halving the mAs', 'Doubling the SID', 'Adding a grid'], 0, 'This is the 15% rule: +15% kVp ≈ 2× mAs for receptor exposure (but with less contrast).'],
+    ['QZ-XRT', 'You change the SID from 100 cm to 200 cm. To keep the same receptor exposure, the mAs should be:', ['Multiplied by 4', 'Doubled', 'Halved', 'Left the same'], 0, 'Inverse square law: doubling distance quarters intensity, so mAs must be multiplied by (200/100)² = 4.'],
+    ['QZ-XRT', 'The standard SID for an erect PA chest is about:', ['180 cm', '100 cm', '120 cm', '60 cm'], 0, 'About 180 cm (72 inches) reduces magnification of the heart and gives sharper images.'],
+    ['QZ-XRT', 'Why is an erect chest X-ray taken PA rather than AP when the patient can stand?', ['The heart is closer to the detector, so it is magnified less', 'It gives a higher dose to the lungs', 'It removes the need for a marker', 'It shows the spine better'], 0, 'In PA the heart sits next to the detector, so the cardiac shadow is not falsely enlarged.'],
+    ['QZ-XRT', 'Good inspiration on a PA chest is usually shown by seeing about how many posterior ribs above the diaphragm?', ['10', '6', '8', '14'], 0, 'At least 10 posterior ribs above the hemidiaphragm suggests adequate inspiration.'],
+    ['QZ-XRT', 'A grid is generally used when the body part is thicker than about:', ['10 cm', '2 cm', '5 cm', '25 cm'], 0, 'Above roughly 10 cm, scatter increases enough that a grid improves contrast.'],
+    ['QZ-XRT', 'The best way to reduce motion blur is to:', ['Use the shortest practical exposure time', 'Use a longer exposure time with lower mA', 'Increase the SID', 'Remove the grid'], 0, 'Short exposure times (higher mA, shorter seconds) freeze motion; clear breathing instructions help too.'],
+    ['QZ-XRT', 'Tight collimation to the area of interest:', ['Lowers patient dose and scatter and improves contrast', 'Increases patient dose', 'Has no effect on image quality', 'Makes the exposure indicator meaningless'], 0, 'A smaller field irradiates less tissue, creating less scatter and better contrast.'],
+    ['QZ-XRT', 'The correct way to mark the side on a radiograph is:', ['Place a lead marker inside the collimated field before exposure', 'Type the side on the image afterwards only', 'Write it on the request form', 'Rely on the patient to say which side'], 0, 'A lead marker exposed with the image is the reliable record of side. Post-exposure annotation alone can be wrong.'],
+    ['QZ-XRT', 'A small LEFT pleural effusion is suspected. Which decubitus view shows it best?', ['Left lateral decubitus (left side down)', 'Right lateral decubitus (right side down)', 'Supine AP', 'Lordotic view'], 0, 'Fluid layers on the dependent side, so the affected side goes down. For a pneumothorax, the affected side goes up.'],
+    ['QZ-XRT', 'In digital radiography, a deviation index (DI) of 0 means:', ['Receptor exposure matched the target for that exam', 'No X-rays reached the detector', 'The image was overexposed by double', 'The grid was missing'], 0, 'DI compares actual to target exposure. 0 is on target; about +3 means roughly double the target exposure.'],
+    ['QZ-XRT', 'Because of the anode heel effect, the thicker part of the anatomy should be placed under the:', ['Cathode side', 'Anode side', 'Centre of the grid only', 'Collimator light'], 0, 'Beam intensity is higher on the cathode side, so place the thicker part there.'],
+
+    // ── X-ray knowledge ──
+    ['QZ-XRK', 'Free air under the diaphragm is best shown on:', ['An erect chest X-ray, after the patient has been upright for several minutes', 'A supine abdomen only', 'A lateral skull view', 'A PA hand view'], 0, 'Air rises. With the patient upright for about 5–10 minutes, free gas collects under the hemidiaphragms.'],
+    ['QZ-XRK', 'A suspected scaphoid fracture needs which extra view?', ['PA wrist in ulnar deviation', 'AP forearm only', 'Lateral elbow', 'Skyline knee'], 0, 'Ulnar deviation elongates the scaphoid so a waist fracture is easier to see.'],
+    ['QZ-XRK', 'A Colles fracture is a fracture of the:', ['Distal radius with dorsal angulation', 'Proximal ulna', 'Fifth metacarpal neck', 'Scaphoid waist'], 0, 'Classic fall-on-outstretched-hand injury: distal radius, dorsally angled fragment.'],
+    ['QZ-XRK', 'Loss of the right heart border on a PA chest suggests disease in the:', ['Right middle lobe', 'Right lower lobe', 'Left upper lobe', 'Right apex'], 0, 'Silhouette sign: the right middle lobe touches the right heart border.'],
+    ['QZ-XRK', 'On a PA chest, cardiomegaly is suggested when the cardiothoracic ratio is more than:', ['0.5', '0.3', '0.7', '1.0'], 0, 'A ratio above 0.5 on a good PA film suggests an enlarged heart. AP films overestimate it.'],
+    ['QZ-XRK', 'In an adult, the tip of an endotracheal tube should ideally be about:', ['5 cm above the carina', 'At the carina', 'In the right main bronchus', '15 cm above the carina'], 0, 'About 5 ± 2 cm above the carina with the head neutral.'],
+    ['QZ-XRK', 'Kerley B lines on a chest X-ray usually indicate:', ['Interstitial pulmonary oedema', 'Pneumothorax', 'Rib fracture', 'Normal lung'], 0, 'Short horizontal lines at the lung bases from fluid-filled interlobular septa.'],
+    ['QZ-XRK', 'The occipitomental (Waters) view is mainly used for the:', ['Maxillary sinuses', 'Odontoid peg', 'Lumbar spine', 'Knee joint'], 0, 'It projects the petrous ridges below the maxillary sinuses.'],
+    ['QZ-XRK', 'The odontoid peg (C2) is best shown on which view?', ['Open-mouth AP', 'Lateral lumbar', 'PA chest', 'Townes'], 0, 'The open mouth clears the teeth from the view of C1–C2.'],
+    ['QZ-XRK', 'Which system classifies fractures through the growth plate in children?', ['Salter–Harris', 'Glasgow', 'Fleischner', 'BI-RADS'], 0, 'Salter–Harris types I–V describe physeal fractures.'],
+    ['QZ-XRK', 'By the 3-6-9 rule, the colon (excluding caecum) is abnormally dilated above:', ['6 cm', '3 cm', '9 cm', '12 cm'], 0, 'Small bowel > 3 cm, colon > 6 cm, caecum > 9 cm.'],
+    ['QZ-XRK', 'Multiple dilated small-bowel loops with air-fluid levels on an erect abdomen suggest:', ['Small-bowel obstruction', 'Normal bowel gas', 'Pneumothorax', 'Kidney stone'], 0, 'Dilated loops with stepped air-fluid levels are typical of obstruction.'],
+
+    // ── CT technical ──
+    ['QZ-CTT', 'In helical CT, pitch is:', ['Table travel per rotation divided by total beam collimation', 'Tube current times rotation time', 'Slice thickness divided by FOV', 'Window width divided by level'], 0, 'Pitch = table feed per rotation ÷ beam collimation. Higher pitch (other factors equal) lowers dose.'],
+    ['QZ-CTT', 'The CT number (HU) of water is:', ['0', '−1000', '+1000', '+100'], 0, 'HU are defined relative to water (0). Air is about −1000.'],
+    ['QZ-CTT', 'Which window setting best shows lung parenchyma?', ['W 1500 / L −600', 'W 80 / L 40', 'W 400 / L 40', 'W 2000 / L 500'], 0, 'A wide window centred at low HU shows lung detail. W80/L40 is a brain window.'],
+    ['QZ-CTT', 'A typical portal venous phase starts about how long after the start of IV contrast injection?', ['60–70 seconds', '10 seconds', '25 seconds', '10 minutes'], 0, 'About 60–70 s for the liver portal venous phase. Arterial phases are earlier, delayed phases later.'],
+    ['QZ-CTT', 'Bolus tracking works by:', ['Watching enhancement in a region of interest and starting the scan when a threshold is reached', 'Scanning at a fixed delay for every patient', 'Injecting contrast after the scan', 'Measuring the patient\'s weight'], 0, 'A monitoring scan over a vessel triggers the diagnostic scan at the right moment.'],
+    ['QZ-CTT', 'Dark streaks between two dense structures (e.g. the petrous bones) are mainly due to:', ['Beam hardening', 'Patient motion', 'Aliasing', 'Ring artifact'], 0, 'Low-energy photons are filtered out by dense bone, causing dark bands between them.'],
+    ['QZ-CTT', 'Partial volume artifact can be reduced by:', ['Using thinner slices', 'Using a wider window', 'Lowering the kVp only', 'Increasing the pitch'], 0, 'Thinner slices average less tissue in each voxel.'],
+    ['QZ-CTT', 'Why should the patient be centred in the gantry isocentre?', ['Bowtie filters and tube current modulation work as designed; off-centring raises dose and noise', 'It makes the scan faster', 'It is only for comfort', 'It removes the need for a scout'], 0, 'Off-centre patients get mis-shaped filtration and modulation, giving more dose and noise.'],
+    ['QZ-CTT', 'The scout (topogram) is used to:', ['Plan the scan range and set dose modulation', 'Replace the diagnostic scan', 'Measure renal function', 'Check the injector'], 0, 'The scout defines coverage and feeds automatic exposure control.'],
+    ['QZ-CTT', 'A contrast extravasation is noticed during injection. The first action is to:', ['Stop the injection and notify the radiologist, then follow the extravasation protocol', 'Increase the injection rate', 'Continue the scan and tell no one', 'Massage the arm vigorously'], 0, 'Stop, assess, elevate the limb, notify and document as per protocol.'],
+    ['QZ-CTT', 'Before IV iodinated contrast, which lab result is most relevant?', ['Serum creatinine / eGFR', 'Blood sugar only', 'Haemoglobin only', 'Platelet count only'], 0, 'Renal function helps identify patients at higher risk from contrast.'],
+    ['QZ-CTT', 'For children, CT should use:', ['Size- or weight-based paediatric protocols', 'The adult protocol to save time', 'The highest available mAs', 'Double-pass scanning routinely'], 0, 'Children are more radiosensitive; Image Gently principles call for child-sized settings.'],
+    ['QZ-CTT', 'Which helps most to reduce breathing motion in a chest CT?', ['Clear breath-hold instructions and a short scan time', 'A longer rotation time', 'A thicker slice only', 'Lower kVp only'], 0, 'Explain, practise the breath-hold and keep the acquisition short.'],
+
+    // ── CT knowledge ──
+    ['QZ-CTK', 'Acute blood on a non-contrast head CT appears:', ['Hyperdense (bright)', 'Hypodense (dark)', 'The same as CSF', 'Black like air'], 0, 'Fresh clotted blood is denser than brain, roughly 50–80 HU.'],
+    ['QZ-CTK', 'A lens-shaped (biconvex) collection that does not cross suture lines is typical of:', ['Extradural (epidural) haematoma', 'Subdural haematoma', 'Subarachnoid haemorrhage', 'Hydrocephalus'], 0, 'Epidural blood is limited by sutures. Subdural blood is crescent-shaped and crosses sutures.'],
+    ['QZ-CTK', 'The first imaging test for suspected acute stroke is usually:', ['Non-contrast CT head', 'Abdominal ultrasound', 'Chest X-ray', 'CT abdomen with contrast'], 0, 'It quickly excludes haemorrhage before treatment decisions.'],
+    ['QZ-CTK', 'A bright middle cerebral artery on non-contrast CT (hyperdense MCA sign) suggests:', ['Thrombus in the MCA', 'Normal calcification only', 'Brain abscess', 'Sinusitis'], 0, 'Clot in the vessel looks denser than flowing blood.'],
+    ['QZ-CTK', 'The usual CT test for suspected pulmonary embolism is:', ['CT pulmonary angiography', 'Non-contrast CT head', 'CT KUB', 'Low-dose CT sinus'], 0, 'Contrast timed to the pulmonary arteries shows emboli as filling defects.'],
+    ['QZ-CTK', 'A structure measuring about −80 HU most likely contains:', ['Fat', 'Calcium', 'Fresh blood', 'Metal'], 0, 'Fat is roughly −50 to −150 HU.'],
+    ['QZ-CTK', 'On CT, findings that support acute appendicitis include:', ['Appendix over 6 mm with wall thickening and surrounding fat stranding', 'Appendix under 3 mm filled with air', 'Normal fat around a thin appendix', 'Calcified spleen'], 0, 'Enlarged, inflamed appendix with periappendiceal stranding.'],
+    ['QZ-CTK', 'The most sensitive test for urinary tract stones is:', ['Non-contrast CT KUB', 'Contrast CT in portal phase only', 'Plain chest X-ray', 'CT head'], 0, 'Low-dose non-contrast CT shows nearly all stones.'],
+    ['QZ-CTK', 'Small amounts of free intraperitoneal air on CT are best seen with a:', ['Wide (lung) window', 'Brain window', 'Bone window only', 'Narrow liver window only'], 0, 'A wide window separates air clearly from fat.'],
+    ['QZ-CTK', 'The first-line drug for anaphylaxis to contrast is:', ['Intramuscular epinephrine (adrenaline)', 'Oral antihistamine only', 'IV contrast re-challenge', 'Paracetamol'], 0, 'IM epinephrine is first line; follow the hospital emergency protocol.'],
+    ['QZ-CTK', 'The strongest risk factor for kidney injury after contrast is:', ['Pre-existing reduced kidney function', 'Young age', 'Normal eGFR', 'Low body temperature'], 0, 'Patients with low eGFR are at highest risk.'],
+    ['QZ-CTK', 'A crescent-shaped collection that crosses suture lines is typical of:', ['Subdural haematoma', 'Extradural haematoma', 'Normal ventricle', 'Pituitary tumour'], 0, 'Subdural blood spreads along the convexity and crosses sutures but not the midline falx.'],
+
+    // ── Ultrasound technical ──
+    ['QZ-UST', 'Compared with a low-frequency transducer, a high-frequency transducer gives:', ['Better resolution but less penetration', 'More penetration but worse resolution', 'More penetration and better resolution', 'No difference'], 0, 'Higher frequency means finer detail, but sound is attenuated faster with depth.'],
+    ['QZ-UST', 'Why is gel applied between the transducer and skin?', ['To remove air so sound passes into the body', 'To cool the transducer', 'To disinfect the skin', 'To increase the frame rate'], 0, 'Air reflects almost all sound. Gel couples the transducer to the skin.'],
+    ['QZ-UST', 'The focal zone should be placed:', ['At or just below the area of interest', 'At the skin surface always', 'At the bottom of the screen always', 'Anywhere; it has no effect'], 0, 'Lateral resolution is best at the focus.'],
+    ['QZ-UST', 'Time gain compensation (TGC) is used to:', ['Adjust brightness at different depths to make up for attenuation', 'Change the transducer frequency', 'Measure blood velocity', 'Freeze the image'], 0, 'Deeper echoes are weaker; TGC evens out brightness with depth.'],
+    ['QZ-UST', 'Typical preparation for a gallbladder scan is:', ['Fasting for about 6–8 hours', 'A full bladder', 'No preparation at all', 'A fatty meal just before'], 0, 'Fasting distends the gallbladder and reduces bowel gas.'],
+    ['QZ-UST', 'For a transabdominal pelvic scan, the bladder should be:', ['Full, to act as an acoustic window', 'Empty', 'Filled with air', 'It does not matter'], 0, 'A full bladder pushes bowel away and transmits sound well.'],
+    ['QZ-UST', 'For Doppler velocity measurements, the angle of insonation should be:', ['60° or less', 'Exactly 90°', 'More than 75°', 'Any angle'], 0, 'At 90° no Doppler shift is detected; above 60° the velocity error rises sharply.'],
+    ['QZ-UST', 'Which transducer is usually best for the thyroid?', ['High-frequency linear', 'Low-frequency curvilinear', 'Phased array cardiac', 'Endocavity'], 0, 'Superficial structures need high frequency and a linear footprint.'],
+    ['QZ-UST', 'Colour Doppler shows aliasing. A good first step is to:', ['Increase the scale (PRF)', 'Decrease the scale', 'Increase the overall gain only', 'Switch to M-mode'], 0, 'Raising the PRF/scale (or moving the baseline) reduces aliasing.'],
+    ['QZ-UST', 'A duplicate copy of the liver appearing above the diaphragm is a:', ['Mirror-image artifact', 'Acoustic shadow', 'Posterior enhancement', 'Real mass'], 0, 'The diaphragm acts as a strong reflector, creating a mirror image.'],
+    ['QZ-UST', 'Turning up the overall gain:', ['Brightens the whole image, including noise', 'Improves resolution', 'Increases penetration depth', 'Reduces patient exposure'], 0, 'Gain amplifies all received echoes; too much adds noise.'],
+    ['QZ-UST', 'Each ultrasound image saved for the report should be labelled with:', ['Patient details, date, body part and side where relevant', 'Only the machine name', 'Nothing; the radiologist remembers', 'The sonographer\'s phone number'], 0, 'Correct labelling makes images traceable and safe to report (P&P Process 4).'],
+
+    // ── Ultrasound knowledge ──
+    ['QZ-USK', 'A simple cyst on ultrasound is typically:', ['Anechoic, thin-walled, with posterior acoustic enhancement', 'Echogenic with a shadow', 'Solid with internal blood flow', 'Calcified'], 0, 'Clear fluid transmits sound well, brightening the tissue behind it.'],
+    ['QZ-USK', 'A gallstone typically appears as:', ['An echogenic focus with posterior shadowing that moves with position', 'An anechoic area with enhancement', 'A thick hypoechoic wall only', 'Nothing visible'], 0, 'Stones reflect sound strongly and cast shadows; most move when the patient turns.'],
+    ['QZ-USK', 'A positive sonographic Murphy sign suggests:', ['Acute cholecystitis', 'Kidney stone', 'Normal gallbladder', 'Liver cyst'], 0, 'Maximum tenderness when pressing over the gallbladder with the probe.'],
+    ['QZ-USK', 'In an adult without previous gallbladder surgery, a normal common bile duct is usually:', ['About 6 mm or less', 'About 15 mm', 'Over 20 mm', 'Not visible ever'], 0, 'Around 6 mm or less is usually normal; it may be slightly larger with age.'],
+    ['QZ-USK', 'Hydronephrosis means:', ['Dilatation of the renal pelvis and calyces', 'A small, scarred kidney', 'A kidney stone without obstruction', 'A normal kidney'], 0, 'Urine is backed up by obstruction or reflux.'],
+    ['QZ-USK', 'In the FAST exam, the right upper quadrant view looks for free fluid in:', ['Morison\'s pouch (hepatorenal space)', 'The thyroid', 'The gallbladder lumen', 'The spinal canal'], 0, 'Free fluid collects early between the liver and right kidney.'],
+    ['QZ-USK', 'A fatty liver usually appears:', ['Brighter (more echogenic) than the right kidney cortex', 'Darker than the kidney', 'Full of anechoic cysts', 'Smaller than normal'], 0, 'Fat increases echogenicity and can blur deeper structures.'],
+    ['QZ-USK', 'An abdominal aorta is considered aneurysmal at a diameter of:', ['3 cm or more', '1 cm or more', '1.5 cm or more', '6 cm only'], 0, 'The usual threshold for AAA is ≥ 3 cm.'],
+    ['QZ-USK', 'The key ultrasound sign of a deep vein thrombosis is:', ['A vein that does not compress with probe pressure', 'A vein that compresses fully', 'Increased arterial flow', 'A bright calcified wall'], 0, 'Normal veins collapse with gentle pressure; a clot prevents this.'],
+    ['QZ-USK', 'In the first trimester, gestational age is best estimated by:', ['Crown–rump length', 'Femur length', 'Abdominal circumference', 'Placental thickness'], 0, 'CRL is the most accurate early dating measurement.'],
+    ['QZ-USK', 'A positive pregnancy test with an empty uterus and an adnexal mass is worrying for:', ['Ectopic pregnancy', 'Normal early pregnancy only', 'Fibroid', 'Ovarian cyst only'], 0, 'This combination needs urgent clinical review.'],
+    ['QZ-USK', 'On ultrasound, an inflamed appendix is typically:', ['Non-compressible and more than 6 mm in diameter', 'Compressible and 3 mm', 'Always invisible', 'Filled with air only'], 0, 'A blind-ending, non-compressible tube over 6 mm supports appendicitis.'],
+
+    // ── Radiation protection ──
+    ['QZ-RP', 'The three principles of radiation protection are:', ['Justification, optimisation and dose limitation', 'Speed, accuracy and cost', 'Time, cost and comfort', 'Shielding, shielding and shielding'], 0, 'Every exposure must be justified, kept as low as reasonably achievable, and within limits.'],
+    ['QZ-RP', 'The three practical ways to reduce your own exposure are:', ['Time, distance and shielding', 'kVp, mAs and SID', 'Gloves, mask and gown', 'Speed, collimation and filters'], 0, 'Spend less time near the source, stay as far away as possible, and use barriers.'],
+    ['QZ-RP', 'If you double your distance from a radiation source, your dose rate becomes about:', ['One quarter', 'One half', 'Double', 'Unchanged'], 0, 'Inverse square law: 2× distance → ¼ dose rate.'],
+    ['QZ-RP', 'The usual occupational effective dose limit for radiation workers is:', ['20 mSv per year averaged over 5 years (max 50 mSv in any one year)', '1 mSv per year', '100 mSv per year', 'There is no limit'], 0, 'Based on ICRP / IAEA Basic Safety Standards. Check our licence conditions with the RPO.'],
+    ['QZ-RP', 'The effective dose limit for members of the public is:', ['1 mSv per year', '20 mSv per year', '50 mSv per year', '5 mSv per month'], 0, 'Public limits are much lower than occupational limits.'],
+    ['QZ-RP', 'The current occupational dose limit for the lens of the eye is:', ['20 mSv per year (averaged over 5 years)', '150 mSv per year', '500 mSv per year', 'No limit'], 0, 'The lens limit was lowered to 20 mSv/yr in the IAEA Basic Safety Standards.'],
+    ['QZ-RP', 'Once a radiation worker declares a pregnancy, the dose to the embryo/fetus should be kept to about:', ['1 mSv for the rest of the pregnancy', '20 mSv per month', '50 mSv total', 'No special limit'], 0, 'Declare pregnancy to the RPO so work can be adjusted.'],
+    ['QZ-RP', 'Your personal dosimeter should be:', ['Worn as the RPO directs whenever you do radiation work, and never shared or left in the room', 'Kept in the X-ray room so it records the room', 'Shared with whoever is on duty', 'Worn only during CT'], 0, 'It measures your dose only if you wear it correctly. The RPO reviews readings (monthly per our manual).'],
+    ['QZ-RP', 'You find a crack in a lead apron. You should:', ['Remove it from use and report it to the RPO', 'Keep using it carefully', 'Fold it to cover the crack', 'Throw it away without telling anyone'], 0, 'Damaged PPE is removed from use pending assessment (P&P Process 14).'],
+    ['QZ-RP', 'Cancer induction from radiation is an example of a:', ['Stochastic effect (probability rises with dose, no safe threshold assumed)', 'Deterministic effect with a fixed threshold', 'Effect that only happens above 10 Sv', 'Effect unrelated to dose'], 0, 'Stochastic risk is assumed to rise with any dose, which is why we optimise every exposure.'],
+    ['QZ-RP', 'A child needs to be held still for an X-ray. The best choice is:', ['Use immobilisation aids, or a non-pregnant relative wearing a lead apron', 'A radiographer holds the child every time', 'A pregnant relative holds the child', 'Hold the child without protection to save time'], 0, 'Staff should not routinely hold patients. Use aids or a protected, non-pregnant carer.'],
+    ['QZ-RP', 'Before an abdominal or pelvic X-ray on a woman of reproductive age, you should:', ['Ask about the possibility of pregnancy and follow protocol', 'Skip it if she looks young', 'Always refuse the exam', 'Ask only after the exposure'], 0, 'Pregnancy screening comes before exposure (P&P Processes 2 and 3).'],
+    ['QZ-RP', 'Which exam usually gives the highest effective dose?', ['CT abdomen and pelvis', 'PA chest X-ray', 'Hand X-ray', 'Abdominal ultrasound'], 0, 'A CT abdomen-pelvis is roughly 10 mSv; a PA chest is about 0.02 mSv; ultrasound uses no ionising radiation.'],
+
+    // ── Physics ──
+    ['QZ-PHY', 'In an X-ray tube, most of the energy of the electrons hitting the anode becomes:', ['Heat', 'X-rays', 'Light', 'Sound'], 0, 'About 99% becomes heat, which is why tube heat limits matter.'],
+    ['QZ-PHY', 'Most X-rays in the diagnostic beam are produced by:', ['Bremsstrahlung (braking) radiation', 'Characteristic radiation only', 'Radioactive decay', 'Piezoelectric crystals'], 0, 'Electrons slowing near nuclei produce a continuous spectrum.'],
+    ['QZ-PHY', 'The photoelectric effect is most likely with:', ['Low photon energy and high atomic number', 'High photon energy and low atomic number', 'Ultrasound waves', 'Magnetic fields'], 0, 'It is why bone and iodine show strong contrast at diagnostic energies.'],
+    ['QZ-PHY', 'The main source of scatter and of staff exposure in radiography is:', ['Compton scattering in the patient', 'The control console', 'The collimator light', 'Photoelectric absorption'], 0, 'Compton scatter leaves the patient in many directions.'],
+    ['QZ-PHY', 'mAs mainly controls:', ['The quantity (number) of X-ray photons', 'The energy of the photons', 'The focal spot size', 'The SID'], 0, 'Doubling mAs doubles the number of photons; kVp controls their energy.'],
+    ['QZ-PHY', 'Added filtration in the X-ray beam:', ['Removes low-energy photons and lowers skin dose', 'Increases skin dose', 'Removes high-energy photons only', 'Has no effect'], 0, 'Low-energy photons would be absorbed by skin without helping the image.'],
+    ['QZ-PHY', 'The half-value layer (HVL) is:', ['The thickness of material that halves the beam intensity', 'Half the tube voltage', 'Half the grid ratio', 'The time for half the dose to decay'], 0, 'HVL describes beam quality (penetrating ability).'],
+    ['QZ-PHY', 'The line focus principle allows:', ['A small effective focal spot with a larger area for heat on the anode', 'Higher kVp without a generator', 'Ultrasound focusing', 'CT without a detector'], 0, 'An angled anode makes the projected focal spot smaller.'],
+    ['QZ-PHY', 'A smaller focal spot gives:', ['Better spatial resolution but lower heat capacity', 'Worse resolution', 'More scatter', 'Higher patient dose always'], 0, 'Small focus = sharper images, but less tolerance for high loads.'],
+    ['QZ-PHY', 'The average speed of sound in soft tissue assumed by ultrasound machines is:', ['1540 m/s', '330 m/s', '3 × 10⁸ m/s', '15 m/s'], 0, 'Machines use 1540 m/s to convert echo time into depth.'],
+    ['QZ-PHY', 'Ultrasound transducers create and receive sound using:', ['The piezoelectric effect', 'X-ray tubes', 'Radioactive sources', 'Magnetic resonance'], 0, 'Crystals vibrate when voltage is applied and produce voltage when echoes return.'],
+    ['QZ-PHY', 'CT numbers (Hounsfield units) express a tissue\'s attenuation relative to:', ['Water', 'Lead', 'Bone', 'Air only'], 0, 'HU = 1000 × (μ tissue − μ water) / μ water.'],
+    ['QZ-PHY', 'The gray (Gy) measures absorbed dose. The sievert (Sv) measures:', ['Equivalent or effective dose (biological risk)', 'Radioactivity', 'Beam energy', 'Exposure time'], 0, 'Sv weights absorbed dose by radiation type and tissue sensitivity.'],
+
+    // ── SIMC policies (Draft 0) ──
+    ['QZ-POL', 'A request is unclear and the side seems wrong. What should you do?', ['Stop before the exam, contact the requester, and record the clarification', 'Do both sides to be safe', 'Do the side you think is right', 'Ask the patient\'s companion to decide'], 0, 'Never examine from an unclear or apparently incorrect request (Process 1).'],
+    ['QZ-POL', 'An unconscious patient arrives with missing details on the request. You should:', ['Get the information from the clinical team and document what is unavailable, without guessing', 'Fill in likely details yourself', 'Refuse the exam permanently', 'Wait until the patient wakes up'], 0, 'Process 1, step 4: do not guess.'],
+    ['QZ-POL', 'Which identifiers does our department use to confirm a patient?', ['Name, date of birth and hospital number where available', 'Room number only', 'First name only', 'The request colour'], 0, 'Process 2 governing policy.'],
+    ['QZ-POL', 'When can IV contrast be given for CT?', ['Only after screening, clinician review, consent, IV access and readiness checks are complete', 'As soon as the patient is on the table', 'After the scan if needed', 'When a verbal OK is given in the hallway'], 0, 'Process 5: never substitute a verbal workaround for formal approval.'],
+    ['QZ-POL', 'An X-ray had to be repeated because of patient motion. Where is the reason recorded?', ['In the Division Census error/repeat field', 'Nowhere, if the second image is good', 'On the patient\'s hand', 'Only in a group chat'], 0, 'Every repeat reason is recorded (Process 3, step 6).'],
+    ['QZ-POL', 'No qualified reader is available for an ultrasound today. What does the current rule say?', ['Do not perform the study; refer or reschedule and inform the requesting clinician', 'Scan it and save the images for next week', 'Let any staff scan and report it', 'Ask the patient to describe the findings'], 0, 'Process 4 authority and step 2.'],
+    ['QZ-POL', 'Under the draft, an after-hours urgent CT (when no CT is scheduled) needs:', ['Appropriate indication, screening by the on-duty radiologist, and a referral form signed by the ER doctor', 'Only a text from the patient', 'Nothing; any request is scanned', 'Approval from billing'], 0, 'Process 5, step 9. Note: Process 16 says this workaround still needs MCC approval.'],
+    ['QZ-POL', 'May full reports or identifiable images be sent through a group chat?', ['No, unless specifically authorised under hospital privacy/security policy', 'Yes, it is faster', 'Yes, if the chat has fewer than 10 members', 'Only on weekends'], 0, 'Process 8 governing policy.'],
+    ['QZ-POL', 'Who may issue the diagnostic interpretation of an exam?', ['An authorised radiologist', 'Any technologist', 'The requesting nurse', 'The admin staff'], 0, 'Process 8 authority.'],
+    ['QZ-POL', 'A critical finding is seen on a scan. What is required?', ['Communicate it promptly through the approved direct channel, document recipient and time, and escalate if they can\'t be reached', 'Wait for routine report delivery', 'Mention it at the next team meeting', 'Post it in a group chat'], 0, 'Process 9: critical findings must not wait for routine delivery.'],
+    ['QZ-POL', 'Results are delivered physically to a ward. What must be obtained?', ['The receiving nurse\'s signature and the time, for every result', 'Nothing', 'The patient\'s fingerprint', 'A verbal thank you'], 0, 'Process 10, step 2.'],
+    ['QZ-POL', 'A relative comes to collect a patient\'s result. You should:', ['Check an acceptable ID and confirm their authority to receive it, following privacy rules', 'Hand it over to anyone who knows the patient\'s name', 'Refuse all relatives always', 'Read the result aloud in the waiting area'], 0, 'Process 10 governing policy and step 3.'],
+    ['QZ-POL', 'A patient lost their result. What is the correct action?', ['Reprint the original final report after verifying it; do not repeat the exam or write a new interpretation', 'Repeat the exam', 'Ask the radiologist to re-read and write a new report', 'Tell the patient it cannot be replaced'], 0, 'Process 11 and Process 17.'],
+    ['QZ-POL', 'Images turn out to be attached to the wrong patient. First you should:', ['Stop release, isolate the case, notify the radiologist/shift lead and follow Process 17', 'Fix the name quietly and send', 'Delete the images', 'Send them anyway and correct later'], 0, 'Process 7, step 6.'],
+    ['QZ-POL', 'An X-ray unit fails its user check. What do you do?', ['Stop using it, label it unavailable and raise a job order', 'Use it for urgent cases only', 'Keep using it and mention it later', 'Restart it until it works'], 0, 'Process 15, steps 3–4.'],
+    ['QZ-POL', 'A patient falls in the department. The correct sequence is:', ['Give immediate assistance, call a doctor, then submit an incident report to the Patient Safety Committee', 'Finish the exam first', 'Only tell a colleague', 'Report it only if there is an injury'], 0, 'Process 17 governing policy.'],
+    ['QZ-POL', 'Where should ALL radiology incidents be logged?', ['In the radiology portal, with an incident report', 'In a personal notebook only', 'Nowhere if no one was hurt', 'In a group chat'], 0, 'Process 17, step 1.'],
+    ['QZ-POL', 'According to the department manual cited in the draft, staff dosimeter readings are reviewed by the RPO:', ['Monthly', 'Once every five years', 'Only after an incident', 'Never'], 0, 'Process 14: monthly review and an annual refresher (to be confirmed against licence conditions).'],
+    ['QZ-POL', 'When may a new staff member work independently?', ['Only after the designated supervisor confirms readiness', 'From their first day', 'After one week automatically', 'Whenever they feel ready'], 0, 'Process 18 governing policy.'],
+    ['QZ-POL', 'Second readings are classified as:', ['Agreement, minor discrepancy or major discrepancy', 'Good or bad', 'Fast or slow', 'Pass or fail only'], 0, 'Process 12, step 3.'],
+    ['QZ-POL', 'A wrong or old result was released. What must happen?', ['Contain/recall it, release the correct report, notify the requesting doctor, and log an IR and Division Census error', 'Ignore it if the patient has left', 'Only delete the file', 'Wait for a complaint'], 0, 'Process 17 governing policy.']
+  ];
+  q.forEach(function (x) { x.push(x[0] === 'QZ-POL' ? P : ''); });
+  return { quizzes: quizzes, questions: q };
 }
