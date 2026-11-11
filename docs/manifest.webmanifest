@@ -1,0 +1,14 @@
+{
+  "name": "Rad Quest",
+  "short_name": "Rad Quest",
+  "description": "Quests, coins and an 8-bit pet for radiology staff development.",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1530",
+  "theme_color": "#0f1530",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
