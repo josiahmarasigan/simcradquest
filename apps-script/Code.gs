@@ -2,8 +2,10 @@
  * SIMC RAD QUEST v3 — gamified staff development
  * Google Apps Script backend (bound to one Google Sheet).
  *
- * The app itself (the "app shell") is a static site in /docs, hosted on GitHub Pages.
- * It talks to this script over HTTPS: every action is a POST to this web app's /exec URL.
+ * The screens live in App.html, in this Apps Script project. Deploying a new version updates everyone.
+ * GitHub Pages (/docs) only hosts a tiny loader, set up once: it asks this script for App.html
+ * (and the player's data) on every open, keeps a copy for offline, and makes the app installable.
+ * Every action is a POST to this web app's /exec URL.
  *
  * Sheet tabs (created by Rad Quest ▸ Run setup):
  *   Config, Staff, Quests, Submissions, Ledger, Shop, Redemptions, Pets, Boss
@@ -19,7 +21,7 @@
  * The Ledger is append-only: never edit or delete rows. Corrections = new rows (Type ADJUST).
  */
 
-var VERSION = '3.1';
+var VERSION = '3.2';
 
 // ───────────────────────────── constants ─────────────────────────────
 
@@ -788,10 +790,27 @@ function doGet() {
   return HtmlService.createHtmlOutput(html).setTitle('Rad Quest server');
 }
 
+/** The app's screens (App.html) and a short fingerprint, so phones only download them when they change. */
+function appUi_() {
+  var html = HtmlService.createHtmlOutputFromFile('App').getContent();
+  var v = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, html)).slice(0, 12);
+  return { v: v, html: html };
+}
+
+/** First call from the GitHub loader: the screens (only if the phone's copy is out of date) + the player's data. */
+function boot(token, knownVersion) {
+  var ui = appUi_();
+  var out = { v: ui.v, ui: String(knownVersion || '') === ui.v ? null : ui, data: null, error: '' };
+  if (token) {
+    try { out.data = openApp_(token); } catch (err) { out.error = String(err && err.message || err); }
+  }
+  return out;
+}
+
 /** The only actions the app shell may call. Everything checks the caller's personal token itself. */
 function api_() {
   return {
-    open: openApp_, getState: getState, feedPet: feedPet, buyItem: buyItem, petPet: petPet, namePet: namePet,
+    boot: boot, open: openApp_, getState: getState, feedPet: feedPet, buyItem: buyItem, petPet: petPet, namePet: namePet,
     submitQuest: submitQuest, adminLogin: adminLogin, adminGetQueue: adminGetQueue, adminGetProof: adminGetProof,
     adminReview: adminReview, adminGetQuests: adminGetQuests, adminToggleQuest: adminToggleQuest, adminSaveQuest: adminSaveQuest,
     startQuiz: startQuiz, submitQuiz: submitQuiz, adminGetQuizzes: adminGetQuizzes, adminToggleQuiz: adminToggleQuiz

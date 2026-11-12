@@ -1,6 +1,6 @@
 // Rad Quest service worker: keeps the app shell on the device so it opens instantly, even offline.
 // It never stores anything from the server. Bump the version when you change the files below.
-const VERSION = 'radquest-shell-3.1.1';
+const VERSION = 'radquest-shell-3.2.0';
 const SHELL = ['index.html', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 

@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rad Quest</title>
+<meta name="theme-color" content="#0f1530">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rad Quest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ground:#0f1530; --panel:#1b2450; --line:#3a4a8c; --deep:#060914; --text:#e8f0ff; --muted:#a9b6e0;
+    --green:#7cff6b; --green-d:#3c9a32; --gold:#ffc93c; --gold-d:#a86a00; --pink:#ff6fa3; --off:#2a3566; --red:#ff8f8f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--ground);color:var(--text);font-family:'VT323',monospace;font-size:20px}
+  .px{font-family:'Press Start 2P',monospace}
+  .app{max-width:440px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding:16px 16px 0}
+  header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .brand{font-size:11px;color:var(--green)}
+  .who{color:var(--muted);font-size:19px;margin-top:6px}
+  .hud{display:flex;align-items:center;gap:8px}
+  .coin{display:flex;align-items:center;gap:8px;background:var(--panel);border:3px solid var(--line);padding:6px 10px}
+  .coin span{font-size:12px;color:var(--gold)}
+  .iconbtn{font-family:'Press Start 2P',monospace;font-size:10px;width:44px;height:44px;background:var(--panel);border:3px solid var(--line);color:var(--muted);cursor:pointer}
+  .iconbtn[aria-pressed="true"]{color:var(--green);border-color:var(--green)}
+  #busy{height:3px;margin-top:10px;background:transparent}
+  #busy.on{background:linear-gradient(90deg,var(--green) 0 30%,transparent 30%);background-size:200% 100%;animation:slide .8s steps(8) infinite}
+  @keyframes slide{from{background-position:100% 0}to{background-position:-100% 0}}
+  main{flex:1;padding:12px 0 96px;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel);border:3px solid var(--line);padding:12px}
+  .label{font-size:9px;color:var(--muted)}
+
+  /* pet screen */
+  .monitor{background:var(--deep);border:4px solid var(--line);box-shadow:4px 4px 0 #050712;height:316px;position:relative;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;overflow:hidden;padding:40px 10px 6px}
+  .mood{font-size:22px;text-align:center;line-height:1}
+  .monitor.room-ct{background:radial-gradient(circle at 50% 50%, #060914 0 92px, #2a3566 93px 118px, #060914 119px)}
+  .monitor.room-night{background-color:#05071a;background-image:radial-gradient(#ffffff 1px,transparent 1.5px),radial-gradient(#8fd3ff 1px,transparent 1.5px);
+    background-size:46px 46px,73px 73px;background-position:0 0,20px 30px}
+  .monitor .tl{position:absolute;top:6px;left:8px}
+  .monitor .tr{position:absolute;top:14px;right:12px;font-size:9px;color:var(--muted)}
+  .namebtn{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--green);background:transparent;border:0;padding:8px 4px;min-height:32px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:4px}
+  .bubble{position:absolute;top:34px;background:var(--text);color:var(--ground);font-family:'Press Start 2P',monospace;font-size:9px;padding:8px 10px;border:3px solid var(--green);max-width:84%;text-align:center;line-height:1.5;z-index:2}
+  .petbtn{background:transparent;border:0;padding:0;cursor:pointer;display:block;position:relative}
+  .pet{display:block}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  @keyframes hop{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(-22px) rotate(-6deg)}60%{transform:translateY(0) rotate(6deg)}}
+  @keyframes munch{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.93) translateY(6px)}}
+  @keyframes eyesO{0%,93%{opacity:1}94%,100%{opacity:0}}
+  @keyframes eyesC{0%,93%{opacity:0}94%,100%{opacity:1}}
+  @keyframes chomp{0%,49%{opacity:1}50%,100%{opacity:0}}
+  @keyframes twinkle{0%,100%{opacity:1}50%{opacity:.15}}
+  @keyframes zfloat{0%{transform:translate(0,0);opacity:0}20%{opacity:1}100%{transform:translate(18px,-46px);opacity:0}}
+  @keyframes drop{0%{transform:translateY(-120px);opacity:1}70%{transform:translateY(0);opacity:1}100%{transform:translateY(0);opacity:0}}
+  @keyframes flash{0%{filter:brightness(6)}100%{filter:brightness(1)}}
+  @keyframes wobble{0%,100%{transform:rotate(0)}25%{transform:rotate(-7deg)}75%{transform:rotate(7deg)}}
+  .pet.idle{animation:bob 1.6s steps(4) infinite}
+  .pet.happy{animation:hop .4s steps(4) 3}
+  .pet.eat{animation:munch .3s steps(2) 5}
+  .pet .eo{animation:eyesO 4.2s steps(1) infinite}
+  .pet .ec{opacity:0;animation:eyesC 4.2s steps(1) infinite}
+  .pet.sleep .eo{animation:none;opacity:0}
+  .pet.sleep .ec{animation:none;opacity:1}
+  .pet.sleep{opacity:.75}
+  .pet .mo{opacity:0}
+  .pet.eat .mo{animation:chomp .3s steps(1) 5}
+  .pet .sp{animation:twinkle 1.1s steps(2) infinite}
+  .pet.flash{animation:flash .9s steps(6) 1}
+  .egg{animation:wobble .6s steps(4) infinite}
+  .zzz{position:absolute;right:-6px;top:10px;font-family:'Press Start 2P',monospace;font-size:12px;color:var(--muted);animation:zfloat 2.4s steps(8) infinite}
+  .zzz.b{animation-delay:1.2s;font-size:9px}
+  .snack{position:absolute;left:50%;top:44%;margin-left:-8px;width:16px;height:16px;background:#ff9f43;box-shadow:inset -4px -4px 0 #c96a12;animation:drop .7s steps(7) 1 forwards}
+  .shadow{width:120px;height:8px;background:var(--panel)}
+  .segs{display:grid;gap:3px}
+  .seg{height:14px;background:var(--off)}
+  .statrow{display:grid;grid-template-columns:92px minmax(0,1fr) 28px;align-items:center;gap:8px}
+  .statrow .segs{grid-template-columns:repeat(10,minmax(0,1fr));gap:2px}
+  .statrow .seg{height:10px}
+
+  /* controls */
+  .btn{font-family:'Press Start 2P',monospace;font-size:10px;border:0;padding:12px 8px;min-height:44px;cursor:pointer;color:var(--ground)}
+  .btn:disabled{cursor:default;opacity:.65}
+  .btn.green{background:var(--green);box-shadow:0 4px 0 var(--green-d)}
+  .btn.gold{background:var(--gold);box-shadow:0 4px 0 var(--gold-d)}
+  .btn.ghost{background:var(--off);color:#c7d0f0;box-shadow:none}
+  .btn:active{transform:translateY(3px);box-shadow:none}
+  .btn.sm{font-size:9px;min-height:40px;padding:8px 10px}
+  a.btn,label.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+  .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .hint{color:var(--muted);text-align:center;font-size:18px}
+  .tabs{display:flex;flex-wrap:wrap;gap:6px}
+  .tab{font-family:'Press Start 2P',monospace;font-size:8px;padding:10px 8px;min-height:40px;cursor:pointer;background:transparent;border:2px solid currentColor}
+  .tab[aria-selected="true"]{color:var(--ground)!important}
+  .item{background:var(--panel);border:3px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+  .item.ok{border-color:var(--green)}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .title{font-size:22px;line-height:1}
+  .tag{font-size:8px;color:var(--ground);padding:5px 6px;flex-shrink:0}
+  .meta{font-size:18px;color:var(--muted);line-height:1.15}
+  .meta a,.linkish{color:var(--green);text-decoration:underline;word-break:break-all}
+  .status{font-size:8px;padding:8px;border:2px solid}
+  .bar{flex:1;height:10px;background:var(--off)}
+  .bar > div{height:10px}
+  .flag{color:var(--red);font-size:18px}
+  .weak{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .hit{font-family:'Press Start 2P',monospace;font-size:8px;color:var(--ground);background:var(--pink);padding:5px 6px;flex-shrink:0}
+  .bossbtn{font-family:'Press Start 2P',monospace;font-size:9px;background:var(--pink);color:var(--ground);border:0;box-shadow:0 4px 0 #a03a63;padding:12px 10px;min-height:44px;cursor:pointer}
+  .bossbtn:active{transform:translateY(3px);box-shadow:none}
+  .steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:20px;line-height:1.15}
+  .bossline{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#2a1030;border:3px solid var(--pink);padding:8px 10px}
+  .seg2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;border:3px solid var(--line)}
+  .seg2 button{font-family:'Press Start 2P',monospace;font-size:9px;min-height:44px;border:0;background:var(--panel);color:var(--muted);cursor:pointer}
+  .seg2 button[aria-pressed="true"]{background:var(--gold);color:var(--ground)}
+  .qopts{display:flex;flex-direction:column;gap:8px}
+  .qopt{font-family:'VT323',monospace;font-size:20px;line-height:1.15;text-align:left;background:var(--panel);color:var(--text);border:3px solid var(--line);padding:10px 12px;min-height:48px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+  .qopt .k{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--gold);padding-top:4px;flex-shrink:0}
+  .qopt[aria-pressed="true"]{border-color:var(--gold);background:#2b2a14}
+  .qtext{font-size:22px;line-height:1.15}
+  .rv{border-left:4px solid var(--line);padding:6px 10px;background:var(--panel);display:flex;flex-direction:column;gap:4px}
+  .rv.ok{border-left-color:var(--green)}
+  .rv.no{border-left-color:var(--red)}
+  .score{font-family:'Press Start 2P',monospace;font-size:22px;text-align:center;line-height:1.4}
+  .boss{background:#2a1030;border:4px solid var(--pink);box-shadow:4px 4px 0 #050712;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .boss .segs{grid-template-columns:repeat(20,minmax(0,1fr));gap:2px}
+  .boss .seg{height:10px;background:#4a2050}
+  table{width:100%;border-collapse:collapse}
+  td,th{text-align:left;padding:6px 4px;border-bottom:2px solid var(--line);font-weight:normal}
+  th{font-family:'Press Start 2P',monospace;font-size:8px;color:var(--muted)}
+  tr.mine td{color:var(--green)}
+
+  /* forms */
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field > span,.legend{font-family:'Press Start 2P',monospace;font-size:8px;color:var(--muted);line-height:1.5}
+  input[type=text],input[type=number],input[type=date],input[type=url],input[type=password],select,textarea{
+    font-family:'VT323',monospace;font-size:20px;background:var(--deep);color:var(--text);border:2px solid var(--line);padding:8px;width:100%;border-radius:0}
+  input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible,.filebtn:focus-within{outline:3px solid var(--gold);outline-offset:1px}
+  textarea{min-height:76px;resize:vertical}
+  .checks{display:flex;flex-wrap:wrap;gap:12px;font-size:20px}
+  .checks label{display:flex;align-items:center;gap:8px;min-height:32px}
+  .checks input{width:22px;height:22px;accent-color:var(--green);flex-shrink:0}
+  .proofs{display:flex;flex-wrap:wrap;gap:8px}
+  .thumb{position:relative;width:96px;height:96px;border:2px solid var(--line);background:var(--deep);padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:16px}
+  .thumb img{display:block;width:100%;height:100%;object-fit:cover}
+  .thumb .x{position:absolute;top:-2px;right:-2px;width:32px;height:32px;background:var(--ground);border:2px solid var(--red);color:var(--red);font-family:'Press Start 2P',monospace;font-size:10px;cursor:pointer}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .err{color:var(--red);font-size:19px;min-height:20px}
+
+  /* nav, overlay, toast */
+  nav{position:fixed;left:0;right:0;bottom:0;background:var(--ground);border-top:3px solid var(--line);z-index:5}
+  nav .in{max-width:440px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px 16px calc(14px + env(safe-area-inset-bottom))}
+  #net{color:var(--gold)}
+  nav .in.admin{grid-template-columns:repeat(5,minmax(0,1fr))}
+  nav button{font-family:'Press Start 2P',monospace;font-size:9px;border:0;padding:14px 0;background:var(--panel);color:var(--text);cursor:pointer;min-height:44px;position:relative}
+  nav .in.admin button{font-size:8px}
+  nav button[aria-current="page"]{background:var(--green);color:var(--ground)}
+  .badge{position:absolute;top:-8px;right:2px;background:var(--pink);color:var(--ground);font-size:8px;padding:4px 5px}
+  #overlay{position:fixed;inset:0;background:rgba(6,9,20,.88);z-index:20;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 14px}
+  #overlay[hidden]{display:none}
+  .sheet{width:100%;max-width:420px;background:var(--ground);border:4px solid var(--line);box-shadow:6px 6px 0 #050712;padding:16px;display:flex;flex-direction:column;gap:12px;margin:auto 0}
+  .sheet h2{margin:0;font-family:'Press Start 2P',monospace;font-size:12px;line-height:1.6;color:var(--gold);font-weight:normal}
+  .news{display:flex;flex-direction:column;gap:8px}
+  .news .n{border-left:0;background:var(--panel);padding:8px 10px;display:flex;justify-content:space-between;gap:10px;font-size:20px;line-height:1.1}
+  .news .n.bad{color:var(--red)}
+  .big{font-family:'Press Start 2P',monospace;font-size:13px;line-height:1.7;text-align:center;color:var(--green)}
+  .stage{display:flex;align-items:center;justify-content:center;gap:14px;min-height:150px;background:var(--deep);border:3px solid var(--line)}
+  .zoom img{width:100%;height:auto;display:block;border:2px solid var(--line)}
+  .toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--text);color:var(--ground);font-family:'Press Start 2P',monospace;
+    font-size:9px;line-height:1.6;padding:10px 12px;border:3px solid var(--green);max-width:360px;width:calc(100% - 32px);text-align:center;display:none;z-index:30}
+  .toast.err{border-color:#d43b3b}
+  .center{min-height:60vh;display:flex;align-items:center;justify-content:center;text-align:center;flex-direction:column;gap:16px}
+  .blink{animation:blinkT 1s steps(1) infinite}@keyframes blinkT{50%{opacity:0}}
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important} .pet .ec{opacity:0} .pet.sleep .ec{opacity:1} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <div class="px brand">RAD QUEST<span id="net" hidden> · OFFLINE</span></div>
+      <div class="who" id="who">&nbsp;</div>
+    </div>
+    <div class="hud">
+      <button type="button" class="iconbtn" id="sndBtn" aria-pressed="false" aria-label="Sound effects">♪</button>
+      <div class="coin" aria-label="Coins">
+        <svg viewBox="0 0 8 8" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true" id="coinIcon"></svg>
+        <span class="px" id="coins">--</span>
+      </div>
+    </div>
+  </header>
+  <div id="busy" aria-hidden="true"></div>
+  <main id="main"><div class="center"><div class="px blink" style="font-size:11px">LOADING...</div></div></main>
+</div>
+<nav aria-label="Main menu"><div class="in" id="navIn">
+  <button type="button" data-go="pet" aria-current="page">PET</button>
+  <button type="button" data-go="quests">QUESTS</button>
+  <button type="button" data-go="shop">SHOP</button>
+  <button type="button" data-go="team">TEAM</button>
+  <button type="button" data-go="admin" id="adminNav" hidden>ADMIN</button>
+</div></nav>
+<div id="overlay" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!--RQ_INJECT-->
+<script>
+(function () {
+  // The GitHub loader puts the server address and the first answer from the server here.
+  var API_URL = String(window.RQ_API || '').trim();
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) { } }
+  };
+  /** A personal link ends in ?u=CODE. Accept the whole link or just the code. */
+  function codeFrom(text) {
+    var m = String(text || '').match(/[?&]u=([a-z0-9]{6,40})/i) || String(text || '').trim().match(/^([a-z0-9]{6,40})$/i);
+    return m ? m[1] : '';
+  }
+  var TOKEN = codeFrom(location.search) || store.get('rq_token') || '';
+  if (TOKEN) store.set('rq_token', TOKEN);
+  var S = null;               // state from server
+  var view = 'pet';
+  var questTab = 'ALL';
+  var questMode = 'QUESTS';   // QUESTS or QUIZZES
+  var shopTab = 'REAL';
+  var confirmId = null;       // shop item waiting for a second tap
+  var busy = 0;
+  var bubble = '';
+  var anim = { type: '', until: 0 };
+  var lastSync = Date.now();
+  var STAT_COLORS = { SKILL: '#ff9f43', SHIELD: '#4dabff', WISDOM: '#b48cff', HEART: '#ff6fa3', VITAL: '#7cff6b' };
+  var REPEAT_LABEL = { once: 'one-time', daily: 'daily', weekly: 'weekly', monthly: 'monthly', unlimited: 'repeatable' };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ───────── pixel art ─────────
+  var SPR = {
+    'PIXEL PUP': ['................', '................', '................', '................', '................', '.....######.....', '....########....', '...##########...', '...#EE####EE#...', '...#EW####EW#...', '...pp######pp...', '...##########...', '...##########...', '....########....', '....##.##.##....', '................'],
+    'PHANTOM': ['................', '.....######.....', '...##########...', '..############..', '..##EE####EE##..', '..##EW####EW##..', '.#pp########pp#.', '.####rrrrrr####.', '.######rr######.', '.####rrrrrr####.', '.######rr######.', '.####rrrrrr####.', '..############..', '..##..####..##..', '..##........##..', '................'],
+    'PHANTOM+': ['..h..........h..', '..hh........hh..', '...h########h...', '..############..', '..##EE####EE##..', '..##EW####EW##..', '.#pp########pp#.', '.####rrrrrr####.', '.######rr######.', '.####rrrrrr####.', '.######rr######.', '.####rrrrrr####.', '.##############.', '.##.###..###.##.', '.#..##....##..#.', '................'],
+    'GUARDIAN': ['....c..cc..c....', '....cccccccc....', '...##########...', '..############..', '..##EE####EE##..', '..##EW####EW##..', 'c#pp########pp#c', 'c####rrrrrr####c', '.######rr######.', '.####rrrrrr####.', '.######rr######.', '.####rrrrrr####.', '..############..', '..##..####..##..', '..##........##..', '................'],
+    'RADIANT GUARDIAN': ['.s..c..cc..c..s.', '....cccccccc....', '...##########...', '..############..', 'w.##EE####EE##.w', 'ww##EW####EW##ww', 'wwpp########ppww', 'w####rrrrrr####w', '.######rr######.', '.####rrrrrr####.', '.######rr######.', '.####rrrrrr####.', '..############..', '..##..####..##..', '.s##........##s.', '................'],
+    'EGG': ['................', '......####......', '.....######.....', '....########....', '....##o#####....', '...###oo#####...', '...##########...', '...####o#####...', '...###ooo####...', '...##########...', '....########....', '....########....', '.....######.....', '......####......', '................', '................']
+  };
+  var LOOK = {
+    'PIXEL PUP': { body: '#8fd3ff', glow: 'rgba(143,211,255,.45)' },
+    'PHANTOM': { body: '#8fd3ff', glow: 'rgba(143,211,255,.6)' },
+    'PHANTOM+': { body: '#b9a4ff', glow: 'rgba(180,140,255,.65)' },
+    'GUARDIAN': { body: '#ffd36b', glow: 'rgba(255,201,60,.65)' },
+    'RADIANT GUARDIAN': { body: '#a6ffa0', glow: 'rgba(124,255,107,.8)' },
+    'EGG': { body: '#f4ecd8', glow: 'rgba(244,236,216,.4)' }
+  };
+  var PIX = { p: '#ff8fb8', r: '#eaf7ff', h: '#ff6fa3', c: '#ffc93c', w: '#ffffff', o: '#7cff6b' };
+  var NEXT_FORM = {
+    'PIXEL PUP': 'Reach level 3 to evolve.',
+    'PHANTOM': 'Level 6 evolves. Keep every stat at 4+ for the Guardian form.',
+    'PHANTOM+': 'Raise every stat to 4+ to become a Guardian.',
+    'GUARDIAN': 'Level 9 with every stat at 7+ unlocks the final form.',
+    'RADIANT GUARDIAN': 'Final form reached. Legendary!'
+  };
+  var COIN = ['..####..', '.#yyyy#.', '#yyWyyy#', '#yyWyyy#', '#yyyyyy#', '#yyyyyy#', '.#yyyy#.', '..####..'];
+
+  function px(x, y, c, w, h) { return '<rect x="' + x + '" y="' + y + '" width="' + (w || 1) + '" height="' + (h || 1) + '" fill="' + c + '"/>'; }
+  function petSvg(form, cosmetics, size) {
+    var map = SPR[form] || SPR.PHANTOM, look = LOOK[form] || LOOK.PHANTOM;
+    var body = '', eo = '', ec = '', sp = '', extra = '', eyeBottom = -1, top = 99, x, y, ch;
+    for (y = 0; y < 16; y++) for (x = 0; x < 16; x++) { ch = map[y].charAt(x); if ((ch === 'E' || ch === 'W') && y > eyeBottom) eyeBottom = y; if (ch === '#' && y < top) top = y; }
+    for (y = 0; y < 16; y++) for (x = 0; x < 16; x++) {
+      ch = map[y].charAt(x);
+      if (ch === '.') continue;
+      if (ch === 'E' || ch === 'W') {
+        body += px(x, y, look.body);
+        eo += px(x, y, ch === 'E' ? '#0f1530' : '#ffffff');
+        if (y === eyeBottom) ec += px(x, y, '#0f1530');
+      } else if (ch === 's') sp += px(x, y, '#fff4c2');
+      else body += px(x, y, ch === '#' ? look.body : PIX[ch]);
+    }
+    var mo = eyeBottom >= 0 ? px(7, eyeBottom + 1, '#0f1530', 2, 2) : '';
+    cosmetics = cosmetics || [];
+    if (cosmetics.indexOf('cape') >= 0) {
+      for (y = 6; y <= 13; y++) {
+        var l = map[y].search(/[#pr]/), r = Math.max(map[y].lastIndexOf('#'), map[y].lastIndexOf('p'));
+        if (l > 0) extra += px(l - 1, y, '#6b7a99');
+        if (r >= 0 && r < 15) extra += px(r + 1, y, '#6b7a99');
+      }
+    }
+    if (cosmetics.indexOf('hat') >= 0 && top < 99) {
+      var hy = Math.max(0, top - 1);
+      extra += px(8, hy, '#c7d0f0', 5, 1) + px(9, Math.max(0, hy - 1), '#c7d0f0', 3, 1) + px(10, hy, '#ffc93c', 1, 1);
+    }
+    return '<svg viewBox="0 0 16 16" width="' + size + '" height="' + size + '" shape-rendering="crispEdges" aria-hidden="true"><g>' + body + '</g><g class="eo">' + eo + '</g><g class="ec">' + ec + '</g><g class="mo">' + mo + '</g><g class="sp">' + sp + '</g>' + extra + '</svg>';
+  }
+  (function () {
+    var s = '', cols = { '#': '#a86a00', y: '#ffc93c', W: '#fff4c2' };
+    for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) { var c = cols[COIN[y].charAt(x)]; if (c) s += px(x, y, c); }
+    $('coinIcon').innerHTML = s;
+  })();
+
+  // ───────── sound (off until switched on) ─────────
+  var Snd = (function () {
+    var ctx = null, on = false;
+    try { on = localStorage.getItem('rq_sound') === '1'; } catch (e) { }
+    var SEQ = { eat: [330, 262, 330, 262, 392], happy: [523, 659, 784], coin: [988, 1319], bad: [196, 147], level: [523, 659, 784, 1047, 1319], tap: [440], send: [392, 523, 659] };
+    return {
+      on: function () { return on; },
+      toggle: function () { on = !on; try { localStorage.setItem('rq_sound', on ? '1' : '0'); } catch (e) { } if (on) this.play('coin'); return on; },
+      play: function (name) {
+        if (!on) return;
+        try {
+          ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+          if (ctx.state === 'suspended') ctx.resume();
+          var t = ctx.currentTime;
+          (SEQ[name] || []).forEach(function (f, i) {
+            var o = ctx.createOscillator(), g = ctx.createGain();
+            o.type = 'square'; o.frequency.value = f;
+            g.gain.setValueAtTime(0.05, t + i * 0.09); g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.12);
+            o.connect(g); g.connect(ctx.destination); o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.13);
+          });
+        } catch (e) { }
+      }
+    };
+  })();
+
+  // ───────── helpers ─────────
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  /** Escape text, then turn http(s) URLs into links that open in a new tab. */
+  function linkify(v) {
+    return esc(v).replace(/(https?:\/\/[^\s<]+)/g, function (u) {
+      var clean = u.replace(/[.,;:)]+$/, ''), tail = u.slice(clean.length);
+      return '<a target="_blank" rel="noopener" href="' + clean + '">' + clean + '</a>' + tail;
+    });
+  }
+  function segs(n, total, on, off) {
+    var h = '';
+    for (var i = 0; i < total; i++) h += '<div class="seg" style="background:' + (i < n ? on : off || '') + '"></div>';
+    return h;
+  }
+  function errText(err) { return String(err && err.message || err).replace(/^(Exception|Error):\s*/, ''); }
+  var toastTimer;
+  function toast(msg, isErr) {
+    var t = $('toast');
+    t.textContent = msg; t.className = 'toast' + (isErr ? ' err' : ''); t.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.style.display = 'none'; }, isErr ? 4500 : 3000);
+  }
+  function setBusy(d) { busy = Math.max(0, busy + d); $('busy').className = busy ? 'on' : ''; }
+  /** Call the server. ok(result), fail(message). */
+  function run(fn, args, ok, fail) {
+    setBusy(1);
+    function bad(m) { setBusy(-1); if (fail) fail(m); else { toast(m, true); Snd.play('bad'); } }
+    // text/plain keeps this a "simple" request, which Apps Script web apps accept from other sites
+    fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: fn, args: args }), redirect: 'follow', cache: 'no-store', credentials: 'omit' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) {
+        setOnline(true);
+        if (!j || !j.ok) { bad(errText(j && j.error || 'Something went wrong.')); return; }
+        setBusy(-1); lastSync = Date.now();
+        if (ok) ok(j.value);
+      }, function () { setOnline(false); bad('Can\'t reach the server. Check your connection and try again.'); });
+  }
+  function setOnline(on) { $('net').hidden = !!on; }
+  function refresh() { run('getState', [TOKEN], function (st) { S = st; renderSoon(); }, function () { }); }
+  function startAnim(type, ms) { anim = { type: type, until: Date.now() + ms }; setTimeout(function () { if (Date.now() >= anim.until) { anim.type = ''; bubble = ''; render(); } }, ms + 30); }
+  /** Re-render now, or right after the pet finishes its animation (so it doesn't restart mid-chew). */
+  function renderSoon() {
+    if (anim.type && Date.now() < anim.until && view === 'pet') { hud(); return; }
+    if (view === 'admin') { hud(); return; }   // never rebuild a form the admin is typing in
+    render();
+  }
+  function moodFor(food, max) { return food <= 0 ? 'Asleep. Needs a snack.' : food < max * 0.4 ? 'Hungry...' : food < max * 0.8 ? 'Content' : 'Full & happy!'; }
+  function cheapestFood() { return S.shop.filter(function (i) { return i.effect === 'food'; }).sort(function (a, b) { return a.price - b.price; })[0]; }
+  function lowestStat() { return S.stats.slice().sort(function (a, b) { return a.val - b.val; })[0]; }
+
+  // ───────── pet screen ─────────
+  function renderPet() {
+    var p = S.pet, hungry = p.food < p.max * 0.4, asleep = p.food <= 0 && !S.me.onLeave;
+    var foodColor = hungry ? '#ff6b6b' : (p.food < p.max * 0.7 ? '#ffc93c' : '#7cff6b');
+    var look = LOOK[p.form] || LOOK.PHANTOM;
+    var lvPct = Math.round((S.xp - S.levelFloor) / Math.max(1, S.levelNext - S.levelFloor) * 100);
+    var live = anim.type && Date.now() < anim.until ? anim.type : '';
+    var cls = live || (asleep ? 'sleep' : 'idle');
+    var h = '';
+    h += '<div class="monitor ' + (p.room ? 'room-' + esc(p.room) : '') + '">';
+    h += '<div class="tl"><button type="button" class="namebtn" id="renameBtn" aria-label="Rename ' + esc(S.me.petName) + '">' + esc(S.me.petName).toUpperCase() + ' · LV ' + S.level + '</button></div>';
+    h += '<div class="px tr">' + esc(p.form) + '</div>';
+    if (bubble) h += '<div class="bubble">' + esc(bubble) + '</div>';
+    h += '<button type="button" class="petbtn" id="petTap" aria-label="Pet ' + esc(S.me.petName) + '" style="filter:drop-shadow(0 0 14px ' + look.glow + ')">';
+    h += '<span class="pet ' + cls + '" id="petWrap">' + petSvg(p.form, p.cosmetics, 168) + '</span>';
+    if (cls === 'sleep') h += '<span class="zzz" aria-hidden="true">Z</span><span class="zzz b" aria-hidden="true">z</span>';
+    if (live === 'eat') h += '<span class="snack" aria-hidden="true"></span>';
+    h += '</button>';
+    h += '<div class="shadow"></div>';
+    h += '<div class="mood" style="color:' + (hungry ? 'var(--red)' : 'var(--green)') + '">' + esc(p.mood) + '</div>';
+    h += '</div>';
+
+    h += '<div><div class="row px" style="font-size:9px;margin-bottom:6px"><span>FULLNESS</span><span style="color:var(--muted)">' + p.food + '/' + p.max + '</span></div>';
+    h += '<div class="segs" style="grid-template-columns:repeat(' + p.max + ',minmax(0,1fr))">' + segs(p.food, p.max, foodColor, 'var(--panel)') + '</div></div>';
+
+    h += '<div><div class="row px" style="font-size:9px;margin-bottom:6px"><span>LEVEL ' + S.level + '</span><span style="color:var(--muted)">' + S.xp + ' / ' + S.levelNext + ' XP</span></div>';
+    h += '<div class="bar" style="height:10px"><div style="width:' + Math.max(0, Math.min(100, lvPct)) + '%;background:var(--gold)"></div></div></div>';
+
+    var food = cheapestFood();
+    h += '<div class="grid2">';
+    h += '<button type="button" class="btn green" id="feedBtn"' + (live === 'eat' ? ' disabled' : '') + '>FEED' + (food ? ' · ' + food.price + 'c' : '') + '</button>';
+    h += '<button type="button" class="btn gold" id="questBtn">FIND A QUEST</button>';
+    h += '</div>';
+
+    if (bossLive()) {
+      h += '<div class="bossline"><span style="font-size:19px;line-height:1.1;color:#ffc1d8">Boss: ' + esc(S.boss.name) + ' · ' + Math.round(S.boss.hp / S.boss.maxHp * 100) + '% HP</span>';
+      h += '<button type="button" class="bossbtn" data-bossguide="1">HOW TO HELP</button></div>';
+    }
+    h += '<div class="card" style="display:flex;flex-direction:column;gap:8px"><div class="px label">WHOLE-PERSON STATS</div>';
+    S.stats.forEach(function (s) {
+      h += '<div class="statrow"><span style="color:' + s.color + '">' + esc(s.name).toUpperCase() + '</span>';
+      h += '<div class="segs" role="img" aria-label="' + esc(s.name) + ' ' + s.val + ' of 10. ' + esc(s.about) + '">' + segs(s.val, 10, s.color, 'var(--off)') + '</div>';
+      h += '<span style="color:var(--muted);text-align:right">' + s.val + '</span></div>';
+    });
+    h += '</div>';
+    h += '<div class="hint">' + esc(NEXT_FORM[p.form] || '') + '</div>';
+    return h;
+  }
+
+  function petLine() {
+    var p = S.pet, low = lowestStat();
+    if (p.food <= 0) return 'Zzz...';
+    if (p.food < p.max * 0.4) return 'My tummy is rumbling!';
+    var lines = ['Hi ' + S.me.name.split(' ')[0] + '!', 'Let\'s do a ' + low.name + ' quest!', 'You\'re doing great.', 'Boop!', 'ALARA forever!'];
+    return lines[Math.floor(Math.random() * lines.length)];
+  }
+
+  function doFeed() {
+    var food = cheapestFood(), p = S.pet;
+    if (!food) { toast('No food in the shop yet.', true); return; }
+    if (S.coins < food.price) { toast('Not enough coins. Finish a quest!', true); Snd.play('bad'); return; }
+    if (p.food >= p.max) { bubble = 'I\'m full!'; startAnim('happy', 1200); render(); return; }
+    // show it right away, then confirm with the server (and undo if that fails)
+    var before = JSON.stringify(S);
+    S.coins -= food.price;
+    p.food = Math.min(p.max, p.food + (food.amount || 1));
+    p.mood = moodFor(p.food, p.max);
+    bubble = 'NOM NOM!';
+    startAnim('eat', 1600); render(); Snd.play('eat');
+    run('feedPet', [TOKEN], function (res) { S = res.state; renderSoon(); }, function (m) { S = JSON.parse(before); anim.type = ''; bubble = ''; render(); toast(m, true); });
+  }
+
+  function doPet() {
+    if (S.pet.food <= 0) { bubble = 'Zzz... (a snack would wake me)'; render(); setTimeout(function () { bubble = ''; render(); }, 1800); return; }
+    bubble = petLine(); startAnim('happy', 1300); render(); Snd.play('happy');
+    if (!S.pet.pettedToday) { run('petPet', [TOKEN], function (res) { S = res.state; renderSoon(); }, function () { }); }
+  }
+
+  // ───────── quests ─────────
+  // ── boss helpers ──
+  var STAT_NAME = { SKILL: 'Skill', SHIELD: 'Shield', WISDOM: 'Wisdom', HEART: 'Heart', VITAL: 'Vitality' };
+  function bossWeak() {
+    if (!S.boss) return [];
+    var list = String(S.boss.stats || 'ALL').split(',').map(function (x) { return x.trim().toUpperCase(); }).filter(String);
+    return list.indexOf('ALL') >= 0 || !list.length ? ['SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'] : list;
+  }
+  function bossLive() { return !!(S.boss && S.boss.status === 'ACTIVE' && S.boss.hp > 0 && (S.boss.daysLeft === null || S.boss.daysLeft === undefined || S.boss.daysLeft > 0)); }
+  /** Does work in this stat damage the boss right now? */
+  function hitsBoss(stat) { return bossLive() && bossWeak().indexOf(String(stat).toUpperCase()) >= 0; }
+  function hitTag(stat, xp) { return hitsBoss(stat) ? '<span class="hit" title="Damage to the boss">BOSS −' + xp + ' HP</span>' : ''; }
+  function weakChips() {
+    return bossWeak().map(function (k) { return '<span class="px tag" style="background:' + (STAT_COLORS[k] || '#e8f0ff') + '">' + k + '</span>'; }).join('');
+  }
+  /** The quests and quizzes this player can do now that hurt the boss, biggest hits first. */
+  function bossMoves() {
+    var moves = [];
+    S.quests.forEach(function (q) { if (q.status === 'open' && hitsBoss(q.stat)) moves.push({ kind: 'quest', id: q.id, title: q.title, stat: q.stat, xp: q.xp, how: 'Quest · counts when approved' }); });
+    (S.quizzes || []).forEach(function (z) { if (z.status === 'open' && hitsBoss(z.stat)) moves.push({ kind: 'quiz', id: z.id, title: z.title, stat: z.stat, xp: z.xp, how: 'Quiz · hits as soon as you pass' }); });
+    return moves.sort(function (a, b) { return b.xp - a.xp; });
+  }
+
+  function bossCard(compact) {
+    var b = S.boss, filled = Math.ceil(b.hp / b.maxHp * 20), pct = Math.round(b.hp / b.maxHp * 100);
+    var h = '<div class="boss"><div class="row"><span class="px" style="font-size:9px;color:var(--pink)">BOSS RAID</span>';
+    h += '<span style="font-size:18px;color:#ffc1d8">' + (b.status === 'DEFEATED' ? 'DEFEATED!' : (b.daysLeft != null ? (b.daysLeft > 0 ? b.daysLeft + ' days left' : 'Time is up') : '')) + '</span></div>';
+    h += '<div class="px" style="font-size:12px;line-height:1.5">' + esc(b.name).toUpperCase() + '</div>';
+    h += '<div class="segs" role="img" aria-label="Boss health ' + pct + ' percent">' + segs(filled, 20, '#ff6fa3', '#4a2050') + '</div>';
+    if (b.status === 'DEFEATED') {
+      h += '<div style="font-size:18px;color:#ffc1d8">Your team won! Everyone got ' + b.reward + 'c.</div></div>';
+      return h;
+    }
+    h += '<div style="font-size:18px;color:#ffc1d8">' + b.hp + ' / ' + b.maxHp + ' HP · Everyone gets ' + b.reward + 'c when it falls.' + (compact ? '' : ' ' + esc(b.description)) + '</div>';
+    h += '<div class="row"><span class="weak"><span class="px" style="font-size:8px;color:#ffc1d8">WEAK TO</span>' + weakChips() + '</span>';
+    h += '<button type="button" class="bossbtn" data-bossguide="1">HOW TO DEFEAT</button></div></div>';
+    return h;
+  }
+
+  function showBossGuide() {
+    var b = S.boss;
+    if (!b) return;
+    var weakNames = bossWeak().map(function (k) { return STAT_NAME[k] || k; });
+    var h = '<h2 id="ovTitle">HOW TO DEFEAT ' + esc(b.name).toUpperCase() + '</h2>';
+    h += '<div class="segs" role="img" aria-label="Boss health ' + Math.round(b.hp / b.maxHp * 100) + ' percent" style="grid-template-columns:repeat(20,minmax(0,1fr));gap:2px">' + segs(Math.ceil(b.hp / b.maxHp * 20), 20, '#ff6fa3', '#4a2050') + '</div>';
+    h += '<div class="meta" style="color:#ffc1d8">' + b.hp + ' of ' + b.maxHp + ' HP left' + (b.daysLeft != null ? ' · ' + b.daysLeft + ' days left' : '') + '</div>';
+    h += '<ol class="steps">';
+    h += '<li>The boss is weak to <b>' + esc(weakNames.join(' and ')) + '</b>. Only work in ' + (weakNames.length > 1 ? 'these stats' : 'this stat') + ' hurts it.</li>';
+    h += '<li>Do a quest or quiz with a <span class="hit">BOSS −HP</span> tag. It hits the boss for the XP it gives.</li>';
+    h += '<li>Quests hit when an admin <b>approves</b> them. Quizzes hit the moment you <b>pass</b>.</li>';
+    h += '<li>When HP reaches 0, <b>everyone</b> on staff gets ' + b.reward + ' coins, even people who couldn\'t help this time.</li>';
+    h += '</ol>';
+    h += '<div class="meta">If time runs out first, nobody loses anything. A new boss comes next month.</div>';
+    var moves = bossMoves();
+    h += '<div class="px label">YOUR BEST HITS RIGHT NOW</div>';
+    if (!moves.length) h += '<div class="meta">You\'ve done every boss quest and quiz open to you for now. Cheer on your team!</div>';
+    moves.slice(0, 6).forEach(function (m) {
+      h += '<div class="item"><div class="row"><span class="title">' + esc(m.title) + '</span><span class="hit">−' + m.xp + ' HP</span></div>';
+      h += '<div class="row"><span class="meta">' + esc(m.how) + '</span>';
+      h += '<button type="button" class="btn green sm" data-bossgo="' + m.kind + ':' + esc(m.id) + '">' + (m.kind === 'quiz' ? 'START' : 'SUBMIT') + '</button></div></div>';
+    });
+    if (moves.length > 6) h += '<div class="meta">…and ' + (moves.length - 6) + ' more on the Quests screen.</div>';
+    h += '<button type="button" class="btn ghost" data-ov="close">GOT IT</button>';
+    openOverlay({ type: 'bossguide' }, h);
+  }
+  /** Show the guide once per boss, the first time someone opens Quests while it's active. */
+  var bossGuideSeen = {};
+  function maybeAutoBossGuide() {
+    if (!bossLive() || O) return;
+    var key = 'rq_boss_' + S.boss.name;
+    var seen = bossGuideSeen[key];
+    try { seen = seen || localStorage.getItem(key) === '1'; localStorage.setItem(key, '1'); } catch (e) { }
+    bossGuideSeen[key] = true;
+    if (!seen) showBossGuide();
+  }
+
+  function renderBossQuests() {
+    var h = '<div class="tabs" role="tablist" aria-label="Filter quests">';
+    ['ALL', 'BOSS', 'SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'].forEach(function (t) {
+      var c = t === 'ALL' ? '#e8f0ff' : t === 'BOSS' ? '#ff6fa3' : STAT_COLORS[t], on = questTab === t;
+      h += '<button type="button" role="tab" class="tab" data-qtab="' + t + '" aria-selected="' + on + '" style="color:' + c + ';' + (on ? 'background:' + c : '') + '">' + t + '</button>';
+    });
+    h += '</div>';
+    var moves = bossMoves();
+    if (!moves.length) return h + '<div class="hint">Nothing left that hurts the boss for you right now. Nice work!</div>';
+    moves.forEach(function (m) {
+      var c = STAT_COLORS[m.stat] || '#e8f0ff';
+      h += '<div class="item"><div class="row"><span class="title">' + esc(m.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(m.stat) + '</span></div>';
+      h += '<div class="row"><span class="meta">' + esc(m.how) + '</span><span class="hit">−' + m.xp + ' HP</span></div>';
+      h += '<button type="button" class="btn green sm" style="align-self:flex-end" data-bossgo="' + m.kind + ':' + esc(m.id) + '">' + (m.kind === 'quiz' ? 'START QUIZ' : 'SUBMIT') + '</button></div>';
+    });
+    return h;
+  }
+
+  function modeSwitch() {
+    var openQuizzes = (S.quizzes || []).filter(function (z) { return z.status === 'open'; }).length;
+    var h = '<div class="seg2" role="group" aria-label="Quests or quizzes">';
+    h += '<button type="button" data-qmode="QUESTS" aria-pressed="' + (questMode === 'QUESTS') + '">QUESTS</button>';
+    h += '<button type="button" data-qmode="QUIZZES" aria-pressed="' + (questMode === 'QUIZZES') + '">QUIZZES' + (openQuizzes ? ' · ' + openQuizzes : '') + '</button>';
+    return h + '</div>';
+  }
+
+  function renderQuizzes() {
+    var h = '<div class="tabs" role="tablist" aria-label="Filter quizzes">';
+    ['ALL', 'SKILL', 'SHIELD', 'WISDOM', 'HEART'].forEach(function (t) {
+      var c = t === 'ALL' ? '#e8f0ff' : STAT_COLORS[t], on = questTab === t;
+      h += '<button type="button" role="tab" class="tab" data-qtab="' + t + '" aria-selected="' + on + '" style="color:' + c + ';' + (on ? 'background:' + c : '') + '">' + t + '</button>';
+    });
+    h += '</div>';
+    var order = { open: 0, limit: 1, done: 2 };
+    var list = (S.quizzes || []).filter(function (z) { return questTab === 'ALL' || z.stat === questTab; })
+      .sort(function (a, b) { return order[a.status] - order[b.status]; });
+    if (!list.length) h += '<div class="hint">No quizzes here right now.</div>';
+    list.forEach(function (z) {
+      var c = STAT_COLORS[z.stat] || '#e8f0ff';
+      h += '<div class="item"><div class="row"><span class="title">' + esc(z.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(z.stat) + '</span></div>';
+      if (z.description) h += '<div class="meta">' + esc(z.description) + '</div>';
+      h += '<div class="meta">' + z.count + ' questions · pass ' + z.pass + '% · <span style="color:var(--gold)">' + z.coins + 'c</span> · ' + z.xp + ' XP · ' + esc(REPEAT_LABEL[z.repeat] || z.repeat) + '</div>';
+      if (z.status === 'open' && hitsBoss(z.stat)) h += '<div class="row" style="justify-content:flex-start">' + hitTag(z.stat, z.xp) + '<span class="meta" style="color:#ffc1d8">as soon as you pass</span></div>';
+      h += '<div class="row"><span class="meta">' + (z.status === 'open' ? z.triesLeft + ' tr' + (z.triesLeft === 1 ? 'y' : 'ies') + ' left today' + (z.best !== null && z.best !== undefined ? ' · best ' + z.best + '%' : '') : '') + '</span>';
+      if (z.status === 'open') h += '<button type="button" class="btn green sm" data-quiz="' + esc(z.id) + '">START</button>';
+      else if (z.status === 'done') h += '<span class="px status" style="color:var(--green)">PASSED</span>';
+      else h += '<span class="px status" style="color:var(--muted)">TOMORROW</span>';
+      h += '</div></div>';
+    });
+    h += '<div class="hint">Quizzes are marked instantly. Pass to earn coins and XP, no photo needed.</div>';
+    return h;
+  }
+
+  function renderQuests() {
+    var h = '';
+    if (S.boss) h += bossCard(true);
+    h += modeSwitch();
+    if (questMode === 'QUIZZES') return h + renderQuizzes();
+    if (questTab === 'BOSS') return h + renderBossQuests();
+    h += '<div class="tabs" role="tablist" aria-label="Filter quests">';
+    (bossLive() ? ['ALL', 'BOSS', 'SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'] : ['ALL', 'SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL']).forEach(function (t) {
+      var c = t === 'ALL' ? '#e8f0ff' : t === 'BOSS' ? '#ff6fa3' : STAT_COLORS[t], on = questTab === t;
+      h += '<button type="button" role="tab" class="tab" data-qtab="' + t + '" aria-selected="' + on + '" style="color:' + c + ';' + (on ? 'background:' + c : '') + '">' + t + '</button>';
+    });
+    h += '</div>';
+    var list = S.quests.filter(function (q) { return questTab === 'ALL' || q.stat === questTab; });
+    var order = { open: 0, pending: 1, full: 2, done: 3 };
+    list.sort(function (a, b) { return order[a.status] - order[b.status]; });
+    if (!list.length) h += '<div class="hint">No quests here right now.</div>';
+    list.forEach(function (q) {
+      var c = STAT_COLORS[q.stat] || '#e8f0ff';
+      h += '<div class="item"><div class="row"><span class="title">' + esc(q.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(q.stat) + '</span></div>';
+      if (q.description) h += '<div class="meta">' + linkify(q.description) + '</div>';
+      var extra = [];
+      if (q.endsOn) extra.push('ends ' + esc(q.endsOn));
+      if (q.spotsLeft !== null && q.spotsLeft !== undefined) extra.push(q.spotsLeft + ' spot' + (q.spotsLeft === 1 ? '' : 's') + ' left');
+      if (extra.length) h += '<div class="meta" style="color:var(--gold)">' + extra.join(' · ') + '</div>';
+      if (q.infoLink) h += '<a class="btn ghost sm" style="align-self:flex-start;font-size:8px" target="_blank" rel="noopener" href="' + esc(q.infoLink) + '">OPEN QUEST LINK ↗</a>';
+      if (q.status === 'open' && hitsBoss(q.stat)) h += '<div class="row" style="justify-content:flex-start">' + hitTag(q.stat, q.xp) + '<span class="meta" style="color:#ffc1d8">once an admin approves it</span></div>';
+      h += '<div class="row"><span class="meta">' + esc(q.proof) + ' · <span style="color:var(--gold)">' + q.coins + 'c</span> · ' + q.xp + ' XP · ' + esc(REPEAT_LABEL[q.repeat] || q.repeat) + '</span>';
+      if (q.status === 'open') h += '<button type="button" class="btn green sm" data-submit="' + esc(q.id) + '">SUBMIT</button>';
+      else if (q.status === 'pending') h += '<span class="px status" style="color:var(--gold)">IN REVIEW</span>';
+      else if (q.status === 'full') h += '<span class="px status" style="color:var(--muted)">FULL</span>';
+      else h += '<span class="px status" style="color:var(--green)">DONE</span>';
+      h += '</div></div>';
+    });
+    if (S.mySubs.length) {
+      h += '<div class="card" style="display:flex;flex-direction:column;gap:8px"><div class="px label">MY RECENT SUBMISSIONS</div>';
+      S.mySubs.forEach(function (s) {
+        var col = s.status === 'APPROVED' ? 'var(--green)' : s.status === 'REJECTED' ? 'var(--red)' : 'var(--gold)';
+        var lab = s.status === 'APPROVED' ? 'APPROVED' + (s.coins != null ? ' +' + s.coins + 'c' : '') : s.status === 'REJECTED' ? 'TRY AGAIN' : 'IN REVIEW';
+        h += '<div><div class="row meta"><span style="color:var(--text)">' + esc(s.when) + ' · ' + esc(s.title) + '</span><span style="color:' + col + ';flex-shrink:0">' + lab + '</span></div>';
+        if (s.note) h += '<div class="meta">Admin: ' + esc(s.note) + '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+    return h;
+  }
+
+  // ───────── shop ─────────
+  function renderShop() {
+    var h = '<div class="card meta">Shopkeeper: “Coins spend, XP stays. Your level never goes down when you buy.”</div>';
+    h += '<div class="grid2" role="tablist" aria-label="Shop section">';
+    [['REAL', 'REAL REWARDS'], ['PET', 'PET STUFF']].forEach(function (t) {
+      var on = shopTab === t[0];
+      h += '<button type="button" role="tab" class="tab" data-stab="' + t[0] + '" aria-selected="' + on + '" style="color:#ffc93c;font-size:9px;min-height:44px;' + (on ? 'background:#ffc93c' : '') + '">' + t[1] + '</button>';
+    });
+    h += '</div>';
+    S.shop.filter(function (i) { return i.category === shopTab; }).sort(function (a, b) { return b.price - a.price; }).forEach(function (i) {
+      var ok = S.coins >= i.price, pct = Math.max(0, Math.min(100, Math.round(S.coins / Math.max(1, i.price) * 100)));
+      var label = i.owned ? 'OWNED' : (confirmId === i.id ? 'SURE?' : (ok ? 'BUY' : pct + '%'));
+      var cls = i.owned ? 'ghost' : (confirmId === i.id ? 'gold' : (ok ? 'green' : 'ghost'));
+      h += '<div class="item' + (ok && !i.owned ? ' ok' : '') + '"><div class="row" style="align-items:baseline"><span class="title">' + esc(i.name) + '</span><span class="px" style="font-size:10px;color:var(--gold);flex-shrink:0">' + i.price + 'c</span></div>';
+      h += '<div class="meta">' + esc(i.description) + '</div>';
+      h += '<div class="row"><div class="bar"><div style="width:' + pct + '%;background:' + (ok ? 'var(--green)' : 'var(--gold)') + '"></div></div>';
+      h += '<button type="button" class="btn sm ' + cls + '" style="min-width:76px" data-buy="' + esc(i.id) + '"' + (i.owned ? ' disabled' : '') + '>' + label + '</button></div></div>';
+    });
+    if (shopTab === 'REAL' && S.requests.length) {
+      h += '<div class="card"><div class="px label" style="margin-bottom:6px">MY REQUESTS</div>';
+      S.requests.slice().reverse().forEach(function (r) {
+        h += '<div class="row meta"><span>' + esc(r.when) + ' · ' + esc(r.name) + '</span><span style="color:' + (r.status === 'FULFILLED' ? 'var(--green)' : 'var(--gold)') + '">' + esc(r.status) + '</span></div>';
+      });
+      h += '</div>';
+    }
+    return h;
+  }
+
+  // ───────── team ─────────
+  function renderTeam() {
+    var h = '';
+    if (S.boss) h += bossCard(false);
+    h += '<div class="card"><div class="px label" style="margin-bottom:8px">' + esc(S.season).toUpperCase() + ' · TEAMS</div>';
+    h += '<table><thead><tr><th scope="col">#</th><th scope="col">TEAM</th><th scope="col">XP / MEMBER</th><th scope="col">QUESTS</th></tr></thead><tbody>';
+    S.teams.forEach(function (t, i) {
+      h += '<tr class="' + (t.team === S.me.team ? 'mine' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(t.team) + (t.team === S.me.team ? ' (you)' : '') + '</td><td>' + Math.round(t.xp / Math.max(1, t.members)) + '</td><td>' + t.quests + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '<div class="hint">Ranked by XP per member, so small teams compete fairly.</div>';
+    return h;
+  }
+
+  // ───────── overlays ─────────
+  var O = null;            // what is open: {type, ...}
+  var queue = [];          // overlays waiting their turn after loading
+  var lastFocus = null;
+  function openOverlay(o, html, focusSel) {
+    if (!O) lastFocus = document.activeElement;
+    O = o;
+    var el = $('overlay');
+    el.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ovTitle">' + html + '</div>';
+    el.hidden = false; el.scrollTop = 0;
+    var f = focusSel ? el.querySelector(focusSel) : el.querySelector('button');
+    if (f) { try { f.focus(); } catch (e) { } }
+  }
+  function closeOverlay() {
+    O = null; $('overlay').hidden = true; $('overlay').innerHTML = '';
+    if (queue.length) { (queue.shift())(); return; }
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) { } }
+  }
+
+  function showHatch() {
+    var h = '<h2 id="ovTitle">AN EGG APPEARED!</h2>';
+    h += '<div class="stage"><span class="egg">' + petSvg('EGG', [], 120) + '</span></div>';
+    h += '<div class="meta">Something is moving inside. Do quests to help it grow, and feed it with the coins you earn.</div>';
+    h += '<label class="field"><span>NAME YOUR PET</span><input type="text" id="hName" maxlength="12" autocomplete="off" value="' + esc(S.me.petName === 'Boney' ? '' : S.me.petName) + '" placeholder="e.g. Boney"></label>';
+    h += '<div class="err" id="ovErr" role="alert"></div>';
+    h += '<button type="button" class="btn green" data-ov="hatch">HATCH!</button>';
+    openOverlay({ type: 'hatch' }, h, '#hName');
+  }
+  function showHatched() {
+    var h = '<h2 id="ovTitle">IT HATCHED!</h2>';
+    h += '<div class="stage"><span class="pet idle flash">' + petSvg(S.pet.form, S.pet.cosmetics, 120) + '</span></div>';
+    h += '<div class="big">SAY HI TO ' + esc(S.me.petName).toUpperCase() + '</div>';
+    h += '<div class="meta">Tap ' + esc(S.me.petName) + ' to pet it. Keep it fed. Grow all five stats evenly to unlock its best form.</div>';
+    h += '<button type="button" class="btn green" data-ov="close">LET\'S GO</button>';
+    openOverlay({ type: 'hatched' }, h);
+  }
+  function showNews(d) {
+    var h = '<h2 id="ovTitle">WHILE YOU WERE AWAY</h2>';
+    if (d.evolved) {
+      h += '<div class="stage"><span class="pet idle" style="opacity:.45">' + petSvg(d.evolved.from, [], 72) + '</span><span class="px" style="color:var(--gold)" aria-hidden="true">▶</span><span class="pet idle flash">' + petSvg(d.evolved.to, S.pet.cosmetics, 120) + '</span></div>';
+      h += '<div class="big">' + esc(S.me.petName).toUpperCase() + ' EVOLVED INTO ' + esc(d.evolved.to) + '!</div>';
+    }
+    if (d.levelUp) h += '<div class="big" style="color:var(--gold)">LEVEL UP! LV ' + d.levelUp.from + ' ▶ LV ' + d.levelUp.to + '</div>';
+    if (d.news.length) {
+      h += '<div class="news">';
+      d.news.forEach(function (n) {
+        var gain = (n.coins ? (n.coins > 0 ? '+' : '') + n.coins + 'c ' : '') + (n.xp ? '+' + n.xp + ' XP' : '');
+        h += '<div class="n ' + esc(n.kind) + '"><span>' + esc(n.text) + '</span>' + (gain ? '<span style="color:var(--gold);flex-shrink:0">' + gain + '</span>' : '') + '</div>';
+      });
+      h += '</div>';
+    }
+    h += '<button type="button" class="btn green" data-ov="close">' + (d.news.some(function (n) { return n.kind === 'bad'; }) && !d.levelUp ? 'OK' : 'NICE!') + '</button>';
+    openOverlay({ type: 'news' }, h);
+  }
+  function showRename() {
+    var h = '<h2 id="ovTitle">RENAME YOUR PET</h2>';
+    h += '<label class="field"><span>NEW NAME (UP TO 12 LETTERS)</span><input type="text" id="hName" maxlength="12" autocomplete="off" value="' + esc(S.me.petName) + '"></label>';
+    h += '<div class="err" id="ovErr" role="alert"></div>';
+    h += '<div class="grid2"><button type="button" class="btn green" data-ov="rename">SAVE</button><button type="button" class="btn ghost" data-ov="close">CANCEL</button></div>';
+    openOverlay({ type: 'rename' }, h, '#hName');
+  }
+
+  // take a quiz
+  function bossGo(code) {
+    var kind = code.split(':')[0], id = code.slice(kind.length + 1);
+    if (kind === 'quiz') { questMode = 'QUIZZES'; if (view !== 'quests') go('quests'); startQuiz(id); return; }
+    var q = S.quests.filter(function (x) { return x.id === id; })[0];
+    questMode = 'QUESTS'; if (view !== 'quests') go('quests');
+    if (q) showSubmit(q);
+  }
+
+  function startQuiz(id) {
+    var z = (S.quizzes || []).filter(function (x) { return x.id === id; })[0];
+    if (!z) return;
+    run('startQuiz', [TOKEN, id], function (d) {
+      openOverlay({ type: 'quiz', d: d, i: 0, ans: d.questions.map(function () { return -1; }), quit: false, level: S.level }, '<div id="quizBox" style="display:contents"></div>');
+      drawQuiz();
+    }, function (m) { toast(m, true); render(); });
+  }
+  function drawQuiz() {
+    var o = O, d = o.d, q = d.questions[o.i], last = o.i === d.questions.length - 1, answered = o.ans[o.i] >= 0;
+    var done = o.ans.filter(function (a) { return a >= 0; }).length;
+    var h = '<h2 id="ovTitle">' + esc(d.title).toUpperCase() + '</h2>';
+    h += '<div class="row px" style="font-size:9px"><span>QUESTION ' + (o.i + 1) + ' / ' + d.questions.length + '</span><span style="color:var(--muted)">PASS ' + d.pass + '%</span></div>';
+    h += '<div class="segs" style="grid-template-columns:repeat(' + d.questions.length + ',minmax(0,1fr))" aria-hidden="true">';
+    o.ans.forEach(function (a, k) { h += '<div class="seg" style="height:8px;background:' + (k === o.i ? 'var(--gold)' : a >= 0 ? 'var(--green)' : 'var(--off)') + '"></div>'; });
+    h += '</div>';
+    h += '<div class="qtext" id="qText" tabindex="-1">' + esc(q.text) + '</div>';
+    h += '<div class="qopts" role="group" aria-labelledby="qText">';
+    q.options.forEach(function (opt, k) {
+      h += '<button type="button" class="qopt" data-qopt="' + k + '" aria-pressed="' + (o.ans[o.i] === k) + '"><span class="k">' + 'ABCD'.charAt(k) + '</span><span>' + esc(opt) + '</span></button>';
+    });
+    h += '</div>';
+    h += '<div class="err" id="ovErr" role="alert"></div>';
+    h += '<div class="grid2">';
+    h += '<button type="button" class="btn ghost" data-ov="qback"' + (o.i === 0 ? ' disabled' : '') + '>BACK</button>';
+    if (last) h += '<button type="button" class="btn green" data-ov="qsubmit">SUBMIT ' + done + '/' + d.questions.length + '</button>';
+    else h += '<button type="button" class="btn ' + (answered ? 'green' : 'gold') + '" data-ov="qnext">' + (answered ? 'NEXT' : 'SKIP') + '</button>';
+    h += '</div>';
+    h += '<button type="button" class="btn ' + (o.quit ? 'gold' : 'ghost') + ' sm" data-ov="qquit">' + (o.quit ? 'TAP AGAIN TO QUIT (COUNTS AS A TRY)' : 'QUIT QUIZ') + '</button>';
+    $('quizBox').innerHTML = h;
+  }
+  function focusIn(sel) { var el = $('overlay').querySelector(sel); if (el) { try { el.focus(); } catch (e) { } } }
+  function submitQuizNow(btn) {
+    var o = O;
+    var blank = o.ans.filter(function (a) { return a < 0; }).length;
+    if (blank && !o.confirmBlank) { o.confirmBlank = true; $('ovErr').textContent = blank + ' unanswered. Tap SUBMIT again to hand it in anyway.'; return; }
+    btn.disabled = true; btn.textContent = 'MARKING...';
+    run('submitQuiz', [TOKEN, o.d.attemptId, o.ans], function (r) {
+      var lvBefore = o.level;
+      S = r.state; render();
+      if (O !== o) return;
+      showQuizResult(r, lvBefore);
+    }, function (m) { if (O === o) { btn.disabled = false; btn.textContent = 'SUBMIT'; $('ovErr').textContent = m; } else toast(m, true); });
+  }
+  function showQuizResult(r, lvBefore) {
+    var h = '<h2 id="ovTitle">' + esc(r.title).toUpperCase() + '</h2>';
+    h += '<div class="score" style="color:' + (r.passed ? 'var(--green)' : 'var(--red)') + '">' + r.score + ' / ' + r.total + '<br>' + (r.passed ? 'PASSED!' : 'NOT YET') + '</div>';
+    if (r.paid) h += '<div class="big" style="color:var(--gold)">+' + r.paid.coins + 'c · +' + r.paid.xp + ' XP</div>';
+    else if (r.alreadyEarned) h += '<div class="meta" style="text-align:center">You already earned this quiz\'s reward for now.</div>';
+    else h += '<div class="meta" style="text-align:center">You need ' + r.pass + '% to pass. Read the answers below and try again.</div>';
+    if (S.level > lvBefore) h += '<div class="big" style="color:var(--gold)">LEVEL UP! LV ' + lvBefore + ' ▶ LV ' + S.level + '</div>';
+    h += '<div class="px label">ANSWERS</div><div class="news">';
+    r.review.forEach(function (q, k) {
+      h += '<div class="rv ' + (q.ok ? 'ok' : 'no') + '"><div style="font-size:19px"><span class="px" style="font-size:9px;color:' + (q.ok ? 'var(--green)' : 'var(--red)') + '">' + (q.ok ? 'RIGHT' : 'WRONG') + '</span> ' + (k + 1) + '. ' + esc(q.text) + '</div>';
+      if (!q.ok) h += '<div class="meta">Your answer: ' + (q.chosen >= 0 ? esc(q.options[q.chosen]) : '(skipped)') + '</div>';
+      h += '<div class="meta" style="color:var(--green)">Answer: ' + esc(q.options[q.correct]) + '</div>';
+      if (q.explanation) h += '<div class="meta">' + esc(q.explanation) + '</div>';
+      h += '</div>';
+    });
+    h += '</div><button type="button" class="btn green" data-ov="close">DONE</button>';
+    openOverlay({ type: 'quizresult' }, h);
+    Snd.play(r.passed ? (S.level > lvBefore ? 'level' : 'coin') : 'bad');
+  }
+
+  // submit a quest
+  function showSubmit(q) {
+    var h = '<h2 id="ovTitle">SUBMIT QUEST</h2>';
+    h += '<div class="title">' + esc(q.title) + '</div>';
+    h += '<div class="meta">Proof needed: ' + esc(q.proof || 'none') + ' · <span style="color:var(--gold)">' + q.coins + 'c</span> · ' + q.xp + ' XP</div>';
+    h += '<label class="field"><span>WHAT DID YOU DO?</span><textarea id="sWhat" maxlength="600" placeholder="A sentence or two"></textarea></label>';
+    h += '<div class="field"><span>PHOTOS' + (q.needsProof ? '' : ' (OPTIONAL)') + ' · UP TO ' + S.maxPhotos + '</span><div class="proofs" id="sPhotos"></div>';
+    h += '<label class="btn gold sm filebtn" style="align-self:flex-start">+ ADD PHOTO<input type="file" class="sr" id="sFile" accept="image/*" multiple></label></div>';
+    h += '<label class="field"><span>LINK (OPTIONAL)</span><input type="url" id="sLink" placeholder="https://…" autocomplete="off"></label>';
+    h += '<div class="checks"><label><input type="checkbox" id="sOk"> My proof shows no patient names, IDs or faces</label></div>';
+    h += '<div class="err" id="ovErr" role="alert"></div>';
+    h += '<div class="grid2"><button type="button" class="btn green" data-ov="send" id="sSend">SEND</button><button type="button" class="btn ghost" data-ov="close">CANCEL</button></div>';
+    openOverlay({ type: 'submit', quest: q, photos: [], reading: 0 }, h, '#sWhat');
+  }
+  function drawPhotos() {
+    if (!O || O.type !== 'submit') return;
+    var h = '';
+    O.photos.forEach(function (d, i) {
+      h += '<span class="thumb"><img alt="Photo ' + (i + 1) + '" src="' + d + '"><button type="button" class="x" data-rmphoto="' + i + '" aria-label="Remove photo ' + (i + 1) + '">X</button></span>';
+    });
+    for (var k = 0; k < O.reading; k++) h += '<span class="thumb blink">...</span>';
+    $('sPhotos').innerHTML = h;
+  }
+  /** Shrink a photo in the browser: smaller upload, and location data is dropped. */
+  function shrink(file, cb) {
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function () {
+      try {
+        var max = 1280, w = img.naturalWidth, hh = img.naturalHeight, k = Math.min(1, max / Math.max(w, hh));
+        var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(hh * k));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        cb(c.toDataURL('image/jpeg', 0.72));
+      } catch (e) { URL.revokeObjectURL(url); cb(null); }
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+    img.src = url;
+  }
+  function addFiles(files) {
+    if (!O || O.type !== 'submit') return;
+    var mine = O, room = S.maxPhotos - mine.photos.length - mine.reading;
+    var list = Array.prototype.slice.call(files, 0, Math.max(0, room));
+    if (files.length > list.length) $('ovErr').textContent = 'Up to ' + S.maxPhotos + ' photos.';
+    list.forEach(function (f) {
+      mine.reading++;
+      shrink(f, function (d) {
+        mine.reading--;
+        if (d) mine.photos.push(d); else if (O === mine) $('ovErr').textContent = 'That file could not be read as a photo.';
+        if (O === mine) drawPhotos();
+      });
+    });
+    drawPhotos();
+  }
+  function sendSubmit() {
+    var o = O, err = $('ovErr'), btn = $('sSend');
+    var what = $('sWhat').value.trim(), link = $('sLink').value.trim();
+    err.textContent = '';
+    if (o.reading) { err.textContent = 'Photo still loading. One moment.'; return; }
+    if (!what) { err.textContent = 'Tell us in a sentence what you did.'; $('sWhat').focus(); return; }
+    if (o.quest.needsProof && !o.photos.length && !link) { err.textContent = 'Add a photo or a link as proof.'; return; }
+    if (!$('sOk').checked) { err.textContent = 'Please tick the box: no patient details in your proof.'; $('sOk').focus(); return; }
+    btn.disabled = true; btn.textContent = 'SENDING...';
+    run('submitQuest', [TOKEN, { questId: o.quest.id, what: what, link: link, photos: o.photos, noPatientInfo: true }], function (res) {
+      S = res.state; closeOverlay(); render(); toast(res.message); Snd.play('send');
+    }, function (m) {
+      if (O !== o) { toast(m, true); return; }
+      btn.disabled = false; btn.textContent = 'SEND'; err.textContent = m; Snd.play('bad');
+    });
+  }
+
+  // ───────── admin ─────────
+  var A = { tab: 'REVIEW', queue: null, history: null, quests: null, edit: null, filter: 'ALL', confirmReject: null, pin: '', proofs: {} };
+  try { A.pin = sessionStorage.getItem('rq_pin') || ''; } catch (e) { }
+  var ROLES = ['Tech', 'Radiologist', 'Admin'];
+  var STAT_KEYS = ['SKILL', 'SHIELD', 'WISDOM', 'HEART', 'VITAL'];
+
+  function adminFail(m) {
+    if (/^PIN/.test(m)) { A.pin = ''; try { sessionStorage.removeItem('rq_pin'); } catch (e) { } showPin(m); return; }
+    toast(m, true); Snd.play('bad'); render();
+  }
+  function adminRun(fn, args, ok) { run(fn, [TOKEN, A.pin].concat(args), ok, adminFail); }
+  function adminLoad() {
+    if (S.me.pinRequired && !A.pin) { showPin(''); return; }
+    if (A.tab === 'REVIEW') adminRun('adminGetQueue', ['PENDING'], function (r) { A.queue = r; S.pendingReviews = r.pendingCount; render(); });
+    else if (A.tab === 'HISTORY') adminRun('adminGetQueue', ['DONE'], function (r) { A.history = r; render(); });
+    else if (A.tab === 'QUIZZES') adminRun('adminGetQuizzes', [], function (r) { A.quizzes = r; render(); });
+    else adminRun('adminGetQuests', [], function (r) { A.quests = r; render(); });
+  }
+  function showPin(msg) {
+    var h = '<h2 id="ovTitle">ADMIN PIN</h2>';
+    h += '<div class="meta">The PIN is in the Config tab of the Rad Quest sheet.</div>';
+    h += '<label class="field"><span>PIN</span><input type="password" inputmode="numeric" id="pinIn" maxlength="12" autocomplete="off"></label>';
+    h += '<div class="err" id="ovErr" role="alert">' + esc(msg || '') + '</div>';
+    h += '<div class="grid2"><button type="button" class="btn green" data-ov="pin">OPEN</button><button type="button" class="btn ghost" data-ov="pincancel">CANCEL</button></div>';
+    openOverlay({ type: 'pin' }, h, '#pinIn');
+  }
+  function sendPin() {
+    var pin = $('pinIn').value.trim(), o = O;
+    if (!pin) { $('ovErr').textContent = 'Type the PIN.'; return; }
+    run('adminLogin', [TOKEN, pin], function (r) {
+      A.pin = pin; try { sessionStorage.setItem('rq_pin', pin); } catch (e) { }
+      A.queue = r; S.pendingReviews = r.pendingCount;
+      if (O === o) closeOverlay();
+      if (A.tab === 'REVIEW') render(); else adminLoad();
+    }, function (m) { if (O === o) { $('ovErr').textContent = m; $('pinIn').value = ''; $('pinIn').focus(); } });
+  }
+
+  function renderAdmin() {
+    if (S.me.pinRequired && !A.pin) return '<div class="card meta">Admin is locked.</div><button type="button" class="btn gold" data-arefresh="1">ENTER PIN</button>';
+    var h = '<div class="tabs" role="tablist" aria-label="Admin sections">';
+    var pend = A.queue ? ' ' + A.queue.pendingCount : '';
+    [['REVIEW', 'REVIEW' + pend], ['HISTORY', 'HISTORY'], ['QUESTS', 'QUESTS'], ['QUIZZES', 'QUIZZES']].forEach(function (t) {
+      var on = A.tab === t[0];
+      h += '<button type="button" role="tab" class="tab" data-atab="' + t[0] + '" aria-selected="' + on + '" style="color:#ffc93c;' + (on ? 'background:#ffc93c' : '') + '">' + t[1] + '</button>';
+    });
+    h += '<button type="button" class="tab" data-arefresh="1" style="color:var(--muted);margin-left:auto">REFRESH</button></div>';
+    if (A.tab === 'REVIEW') h += renderQueue(A.queue, true);
+    else if (A.tab === 'HISTORY') h += renderQueue(A.history, false);
+    else if (A.tab === 'QUIZZES') h += renderAdminQuizzes();
+    else h += A.edit ? renderQuestEditor() : renderQuestList();
+    return h;
+  }
+
+  function renderQueue(q, pending) {
+    if (!q) return '<div class="hint blink">LOADING...</div>';
+    if (!q.items.length) return '<div class="card meta">' + (pending ? 'Nothing waiting. Every quest is reviewed!' : 'No reviewed submissions yet.') + '</div>';
+    var h = '';
+    q.items.forEach(function (s) {
+      var c = STAT_COLORS[s.stat] || '#e8f0ff';
+      h += '<div class="item" data-subcard="' + s.row + '">';
+      h += '<div class="row"><span class="title">' + esc(s.name) + '</span><span class="meta">' + esc(s.when) + '</span></div>';
+      h += '<div class="row"><span style="font-size:20px">' + esc(s.questId) + ' · ' + esc(s.questTitle) + '</span>' + (s.stat ? '<span class="px tag" style="background:' + c + '">' + esc(s.stat) + '</span>' : '') + '</div>';
+      if (s.proofNeeded) h += '<div class="meta">Proof required: ' + esc(s.proofNeeded) + '</div>';
+      if (s.what) h += '<div class="card" style="padding:8px;font-size:19px">“' + linkify(s.what) + '”</div>';
+      if (s.flag) h += '<div class="flag">! ' + esc(s.flag) + '</div>';
+      if (s.evidence.length) {
+        h += '<div class="proofs">';
+        s.evidence.forEach(function (e, i) {
+          if (e.driveId) {
+            var have = A.proofs[e.driveId];
+            h += '<button type="button" class="thumb" data-zoom="' + esc(e.driveId) + '" aria-label="Enlarge proof ' + (i + 1) + '">' + (have && have.image ? '<img alt="Proof ' + (i + 1) + '" src="' + have.image + '">' : '<span data-proofwait="' + esc(e.driveId) + '">' + (have && !have.loading ? 'FILE' : '...') + '</span>') + '</button>';
+          } else h += '<a class="linkish" style="font-size:18px" target="_blank" rel="noopener" href="' + esc(e.url) + '">Open proof link ' + (i + 1) + ' ↗</a>';
+        });
+        h += '</div>';
+      } else h += '<div class="meta">No photo or link attached.</div>';
+
+      if (pending) {
+        h += '<div class="grid2">';
+        h += '<label class="field"><span>COINS</span><input type="number" min="0" step="1" data-f="coins" value="' + s.defaultCoins + '"></label>';
+        h += '<label class="field"><span>XP</span><input type="number" min="0" step="1" data-f="xp" value="' + s.defaultXp + '"></label>';
+        h += '</div>';
+        h += '<label class="field"><span>NOTE TO STAFF (OPTIONAL)</span><input type="text" data-f="note" maxlength="300" placeholder="e.g. Great job, or what to fix"></label>';
+        h += '<div class="grid2">';
+        h += '<button type="button" class="btn green" data-review="approve" data-row="' + s.row + '">APPROVE</button>';
+        h += '<button type="button" class="btn ghost" data-review="reject" data-row="' + s.row + '">REJECT</button>';
+        h += '</div>';
+      } else {
+        var ok = s.status === 'APPROVED';
+        h += '<div class="row meta"><span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + '">' + esc(s.status) + (ok ? ' · +' + esc(s.coinsAwarded) + 'c +' + esc(s.xpAwarded) + ' XP' : '') + '</span><span>' + esc(s.reviewedBy) + '</span></div>';
+        if (s.note) h += '<div class="meta">Note: ' + esc(s.note) + '</div>';
+      }
+      h += '</div>';
+    });
+    return h;
+  }
+  /** Fetch proof photos through the server (so any admin can see them), a few at a time. */
+  function loadProofs() {
+    var waits = document.querySelectorAll('[data-proofwait]'), started = 0;
+    Array.prototype.forEach.call(waits, function (el) {
+      var id = el.getAttribute('data-proofwait');
+      if (A.proofs[id] || started >= 6) return;
+      started++; A.proofs[id] = { loading: true };
+      run('adminGetProof', [TOKEN, A.pin, id], function (r) {
+        A.proofs[id] = r;
+        Array.prototype.forEach.call(document.querySelectorAll('[data-proofwait="' + id + '"]'), function (w) {
+          if (r.image) { var img = document.createElement('img'); img.alt = 'Proof photo'; img.src = r.image; w.parentNode.replaceChild(img, w); }
+          else w.textContent = 'FILE';
+        });
+        loadProofs();
+      }, function () { delete A.proofs[id]; el.textContent = 'ERR'; });
+    });
+  }
+  function showZoom(id) {
+    var p = A.proofs[id];
+    var h = '<h2 id="ovTitle">PROOF</h2>';
+    if (p && p.image) h += '<div class="zoom"><img alt="Proof photo, full size" src="' + p.image + '"></div>';
+    else if (p && !p.loading) h += '<div class="meta">This file is not a photo (' + esc(p.name) + '). The Sheet owner can open it from the Rad Quest proofs folder in Drive.</div>';
+    else h += '<div class="hint blink">LOADING...</div>';
+    h += '<button type="button" class="btn ghost" data-ov="close">CLOSE</button>';
+    openOverlay({ type: 'zoom' }, h);
+  }
+
+  function renderAdminQuizzes() {
+    if (!A.quizzes) return '<div class="hint blink">LOADING...</div>';
+    var h = '<div class="card meta">Questions live in the <b>Questions</b> tab of the Sheet: add, edit or untick Active there. Each quiz draws a random set every time. Who took what is in the <b>QuizAttempts</b> tab.</div>';
+    A.quizzes.forEach(function (z) {
+      var c = STAT_COLORS[z.stat] || '#e8f0ff';
+      h += '<div class="item">';
+      h += '<div class="row"><span class="title"' + (z.active ? '' : ' style="color:var(--muted)"') + '>' + esc(z.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(z.stat) + '</span></div>';
+      h += '<div class="meta">' + esc(z.id) + ' · ' + esc(z.roles) + ' · ' + z.pool + ' questions in bank, ' + Math.min(z.pool, z.perAttempt) + ' per try · pass ' + z.pass + '% · ' + z.coins + 'c · ' + z.xp + ' XP</div>';
+      h += '<div class="meta">' + (z.attempts ? z.attempts + ' tries · ' + z.passRate + '% passed · ' + z.passedBy + ' staff passed' : 'No tries yet') + '</div>';
+      if (z.pool < z.perAttempt) h += '<div class="flag">! Fewer questions in the bank than asked per try.</div>';
+      h += '<div class="row"><span class="px status" style="color:' + (z.active ? 'var(--green)' : 'var(--muted)') + '">' + (z.active ? 'LIVE' : 'OFF') + '</span>';
+      h += '<button type="button" class="btn sm ' + (z.active ? 'ghost' : 'green') + '" style="font-size:8px" data-ztoggle="' + esc(z.id) + '" data-on="' + (z.active ? '0' : '1') + '">' + (z.active ? 'TURN OFF' : 'TURN ON') + '</button></div></div>';
+    });
+    return h;
+  }
+
+  function renderQuestList() {
+    if (!A.quests) return '<div class="hint blink">LOADING...</div>';
+    var h = '<button type="button" class="btn green" data-qnew="1">+ NEW QUEST</button>';
+    h += '<div class="tabs" role="tablist" aria-label="Filter quests">';
+    ['ALL', 'ON', 'OFF'].forEach(function (f) {
+      var on = A.filter === f;
+      h += '<button type="button" role="tab" class="tab" data-qfilter="' + f + '" aria-selected="' + on + '" style="color:#e8f0ff;' + (on ? 'background:#e8f0ff' : '') + '">' + f + '</button>';
+    });
+    h += '</div>';
+    A.quests.filter(function (q) { return A.filter === 'ALL' || (A.filter === 'ON' ? q.active : !q.active); }).forEach(function (q) {
+      var c = STAT_COLORS[q.stat] || '#e8f0ff';
+      var state = !q.active ? ['OFF', 'var(--muted)'] : (q.live ? ['LIVE', 'var(--green)'] : ['SCHEDULED', 'var(--gold)']);
+      h += '<div class="item">';
+      h += '<div class="row"><span class="title"' + (q.active ? '' : ' style="color:var(--muted)"') + '>' + esc(q.title) + '</span><span class="px tag" style="background:' + c + '">' + esc(q.stat) + '</span></div>';
+      h += '<div class="meta">' + esc(q.id) + ' · ' + esc(q.roles) + ' · ' + q.coins + 'c · ' + q.xp + ' XP · ' + esc(q.repeat) +
+        (q.startDate || q.endDate ? ' · ' + esc(q.startDate || '…') + ' → ' + esc(q.endDate || '…') : '') + '</div>';
+      h += '<div class="meta">Claimed ' + q.claims + (q.maxClaims ? ' / ' + q.maxClaims : '') + (q.pending ? ' · <span style="color:var(--gold)">' + q.pending + ' waiting review</span>' : '') + '</div>';
+      h += '<div class="row"><span class="px status" style="color:' + state[1] + '">' + state[0] + '</span><span style="display:flex;gap:8px">';
+      h += '<button type="button" class="btn sm ' + (q.active ? 'ghost' : 'green') + '" style="font-size:8px" data-qtoggle="' + esc(q.id) + '" data-on="' + (q.active ? '0' : '1') + '">' + (q.active ? 'TURN OFF' : 'TURN ON') + '</button>';
+      h += '<button type="button" class="btn sm gold" style="font-size:8px" data-qedit="' + esc(q.id) + '">EDIT</button>';
+      h += '</span></div></div>';
+    });
+    return h;
+  }
+
+  function renderQuestEditor() {
+    var q = A.edit;
+    var h = '<div class="card" style="display:flex;flex-direction:column;gap:10px" id="qform">';
+    h += '<div class="px" style="font-size:10px;color:var(--gold)">' + (q.id ? 'EDIT ' + esc(q.id) : 'NEW QUEST') + '</div>';
+    h += '<label class="field"><span>TITLE</span><input type="text" data-q="title" maxlength="80" value="' + esc(q.title) + '"></label>';
+    h += '<div class="grid2"><label class="field"><span>STAT</span><select data-q="stat">' + STAT_KEYS.map(function (k) { return '<option' + (q.stat === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select></label>';
+    h += '<label class="field"><span>REPEAT</span><select data-q="repeat">' + ['once', 'daily', 'weekly', 'monthly', 'unlimited'].map(function (k) { return '<option' + (q.repeat === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select></label></div>';
+    var roles = String(q.roles || 'ALL').split(',').map(function (r) { return r.trim(); });
+    var all = roles.indexOf('ALL') >= 0;
+    h += '<fieldset style="border:0;padding:0;margin:0"><legend class="legend" style="padding:0;margin-bottom:4px">WHO CAN DO IT</legend><div class="checks">';
+    h += '<label><input type="checkbox" data-role="ALL"' + (all ? ' checked' : '') + '> Everyone</label>';
+    ROLES.forEach(function (r) { h += '<label><input type="checkbox" data-role="' + r + '"' + (!all && roles.indexOf(r) >= 0 ? ' checked' : '') + '> ' + r + '</label>'; });
+    h += '</div></fieldset>';
+    h += '<div class="grid3"><label class="field"><span>COINS</span><input type="number" min="0" data-q="coins" value="' + esc(q.coins) + '"></label>';
+    h += '<label class="field"><span>XP</span><input type="number" min="0" data-q="xp" value="' + esc(q.xp) + '"></label>';
+    h += '<label class="field"><span>MAX CLAIMS</span><input type="number" min="0" data-q="maxClaims" placeholder="none" value="' + esc(q.maxClaims) + '"></label></div>';
+    h += '<label class="field"><span>PROOF REQUIRED (WRITE "SELF-REPORT" IF NONE)</span><input type="text" data-q="proof" maxlength="80" placeholder="e.g. Photo of QC log" value="' + esc(q.proof) + '"></label>';
+    h += '<label class="field"><span>DESCRIPTION (LINKS BECOME CLICKABLE)</span><textarea data-q="description" maxlength="600">' + esc(q.description) + '</textarea></label>';
+    h += '<label class="field"><span>QUEST LINK (OPTIONAL)</span><input type="url" data-q="link" placeholder="https://…" value="' + esc(q.link) + '"></label>';
+    h += '<div class="grid2"><label class="field"><span>OPENS</span><input type="date" data-q="startDate" value="' + esc(q.startDate) + '"></label>';
+    h += '<label class="field"><span>CLOSES</span><input type="date" data-q="endDate" value="' + esc(q.endDate) + '"></label></div>';
+    h += '<div class="checks"><label><input type="checkbox" data-q="active"' + (q.active ? ' checked' : '') + '> Quest is ON</label></div>';
+    h += '<div class="grid2"><button type="button" class="btn green" data-qsave="1">SAVE</button><button type="button" class="btn ghost" data-qcancel="1">CANCEL</button></div>';
+    h += '<div class="hint">Leave the dates blank to keep the quest open.</div></div>';
+    return h;
+  }
+  function readQuestForm() {
+    var f = $('qform'), q = { id: A.edit.id };
+    Array.prototype.forEach.call(f.querySelectorAll('[data-q]'), function (el) {
+      q[el.getAttribute('data-q')] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    var picked = Array.prototype.filter.call(f.querySelectorAll('[data-role]'), function (el) { return el.checked; }).map(function (el) { return el.getAttribute('data-role'); });
+    q.roles = picked.indexOf('ALL') >= 0 || !picked.length ? 'ALL' : picked.join(',');
+    return q;
+  }
+
+  // ───────── render ─────────
+  function hud() {
+    store.set('rq_state', JSON.stringify({ token: TOKEN, state: S }));   // so the next open paints instantly
+    $('coins').textContent = S.coins;
+    $('who').textContent = S.me.name + ' · ' + S.me.role + ' · ' + S.me.team;
+    var an = $('adminNav');
+    an.hidden = !S.me.isAdmin;
+    an.innerHTML = 'ADMIN' + (S.pendingReviews ? '<span class="badge" aria-label="' + S.pendingReviews + ' waiting">' + S.pendingReviews + '</span>' : '');
+    $('navIn').className = 'in' + (S.me.isAdmin ? ' admin' : '');
+  }
+  function render() {
+    if (!S) return;
+    hud();
+    $('main').innerHTML = view === 'pet' ? renderPet() : view === 'quests' ? renderQuests() : view === 'shop' ? renderShop() : view === 'admin' ? renderAdmin() : renderTeam();
+    Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (b) {
+      if (b.getAttribute('data-go') === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    if (view === 'admin') loadProofs();
+  }
+  function go(v) { view = v; confirmId = null; bubble = ''; render(); window.scrollTo(0, 0); if (v === 'admin') adminLoad(); if (v === 'quests') maybeAutoBossGuide(); }
+
+  // ───────── events ─────────
+  $('sndBtn').setAttribute('aria-pressed', Snd.on() ? 'true' : 'false');
+  $('sndBtn').addEventListener('click', function () { this.setAttribute('aria-pressed', Snd.toggle() ? 'true' : 'false'); toast(Snd.on() ? 'Sound on' : 'Sound off'); });
+
+  $('overlay').addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'sFile') { addFiles(e.target.files); e.target.value = ''; }
+  });
+  $('overlay').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target && (e.target.id === 'hName' || e.target.id === 'pinIn')) {
+      e.preventDefault();
+      var b = $('overlay').querySelector('[data-ov="hatch"],[data-ov="rename"],[data-ov="pin"]'); if (b) b.click();
+    }
+    if (e.key === 'Escape' && O && O.type !== 'hatch' && O.type !== 'quiz') { if (O.type === 'pin') { closeOverlay(); go('pet'); } else closeOverlay(); }
+  });
+  $('overlay').addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('button') : null;
+    if (!t) return;
+    var qo = t.getAttribute('data-qopt');
+    if (qo !== null && O && O.type === 'quiz') { O.ans[O.i] = Number(qo); O.quit = false; O.confirmBlank = false; drawQuiz(); focusIn('[data-qopt="' + qo + '"]'); Snd.play('tap'); return; }
+    var rm = t.getAttribute('data-rmphoto');
+    if (rm !== null && O && O.type === 'submit') { O.photos.splice(Number(rm), 1); drawPhotos(); return; }
+    if (t.getAttribute('data-bossgo')) { var bgo2 = t.getAttribute('data-bossgo'); closeOverlay(); bossGo(bgo2); return; }
+    var ov = t.getAttribute('data-ov');
+    if (!ov) return;
+    if (ov === 'qnext' && O.type === 'quiz') { O.i++; O.quit = false; drawQuiz(); focusIn('#qText'); return; }
+    if (ov === 'qback' && O.type === 'quiz') { O.i = Math.max(0, O.i - 1); O.quit = false; drawQuiz(); focusIn('#qText'); return; }
+    if (ov === 'qsubmit' && O.type === 'quiz') { submitQuizNow(t); return; }
+    if (ov === 'qquit' && O.type === 'quiz') {
+      if (!O.quit) { O.quit = true; drawQuiz(); return; }
+      var dq = O.d; closeOverlay();
+      run('submitQuiz', [TOKEN, dq.attemptId, []], function (r) { S = r.state; render(); toast('Quiz ended. ' + (r.state.quizzes.filter(function (z) { return z.id === dq.quizId; })[0] || { triesLeft: 0 }).triesLeft + ' tries left today.'); }, function () { refresh(); });
+      return;
+    }
+    if (ov === 'close') { closeOverlay(); if (view === 'pet') render(); return; }
+    if (ov === 'send') { sendSubmit(); return; }
+    if (ov === 'pin') { sendPin(); return; }
+    if (ov === 'pincancel') { closeOverlay(); go('pet'); return; }
+    if (ov === 'hatch' || ov === 'rename') {
+      var name = $('hName').value.trim() || (ov === 'hatch' ? 'Boney' : ''), o = O;
+      t.disabled = true;
+      run('namePet', [TOKEN, name], function (res) {
+        S = res.state; render(); Snd.play('level');
+        if (O !== o) return;
+        if (ov === 'hatch') showHatched(); else { closeOverlay(); toast(res.message); }
+      }, function (m) { t.disabled = false; if (O === o) $('ovErr').textContent = m; });
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || e.target.closest('#overlay')) return;
+    var t = e.target.closest('button');
+    if (!t) return;
+    if (t.id === 'loginBtn') { signIn(); return; }
+    if (t.id === 'retryBtn') { start(); return; }
+    if (!S) return;
+    var goTo = t.getAttribute('data-go');
+    if (goTo) { go(goTo); return; }
+
+    // pet screen
+    if (t.id === 'feedBtn') { doFeed(); return; }
+    if (t.id === 'petTap') { doPet(); return; }
+    if (t.id === 'questBtn') { var low = lowestStat(); questTab = low && low.val < 10 ? low.key : 'ALL'; go('quests'); return; }
+    if (t.id === 'renameBtn') { showRename(); return; }
+
+    // quests + shop
+    var qt = t.getAttribute('data-qtab'); if (qt) { questTab = qt; render(); return; }
+    if (t.getAttribute('data-bossguide')) { showBossGuide(); return; }
+    var bg = t.getAttribute('data-bossgo'); if (bg) { bossGo(bg); return; }
+    var qm = t.getAttribute('data-qmode'); if (qm) { questMode = qm; if ((questTab === 'VITAL' || questTab === 'BOSS') && qm === 'QUIZZES') questTab = 'ALL'; render(); return; }
+    var qz = t.getAttribute('data-quiz'); if (qz) { t.disabled = true; t.textContent = '...'; startQuiz(qz); return; }
+    var sub = t.getAttribute('data-submit');
+    if (sub) { var q = S.quests.filter(function (x) { return x.id === sub; })[0]; if (q) showSubmit(q); return; }
+    var st = t.getAttribute('data-stab'); if (st) { shopTab = st; confirmId = null; render(); return; }
+    var buy = t.getAttribute('data-buy');
+    if (buy) {
+      var item = S.shop.filter(function (i) { return i.id === buy; })[0];
+      if (!item) return;
+      if (S.coins < item.price) { toast('Save ' + (item.price - S.coins) + ' more coins for this.'); return; }
+      if (confirmId !== buy) { confirmId = buy; render(); return; }
+      confirmId = null; t.disabled = true; t.textContent = '...';
+      run('buyItem', [TOKEN, buy], function (res) { S = res.state; render(); toast(res.message); Snd.play('coin'); }, function (m) { toast(m, true); refresh(); });
+      return;
+    }
+
+    // admin
+    var at = t.getAttribute('data-atab'); if (at) { A.tab = at; A.edit = null; A.confirmReject = null; render(); adminLoad(); return; }
+    if (t.getAttribute('data-arefresh')) { adminLoad(); return; }
+    var zoom = t.getAttribute('data-zoom'); if (zoom) { showZoom(zoom); return; }
+    var rv = t.getAttribute('data-review');
+    if (rv) {
+      var row = Number(t.getAttribute('data-row'));
+      var card = document.querySelector('[data-subcard="' + row + '"]');
+      var val = function (f) { var el = card.querySelector('[data-f="' + f + '"]'); return el ? el.value : ''; };
+      if (rv === 'reject' && A.confirmReject !== row) {
+        // second tap needed; nothing typed on the card is lost
+        A.confirmReject = row; t.textContent = 'TAP TO REJECT'; t.className = 'btn gold';
+        return;
+      }
+      A.confirmReject = null;
+      Array.prototype.forEach.call(card.querySelectorAll('button[data-review]'), function (b) { b.disabled = true; });
+      adminRun('adminReview', [row, rv === 'approve', val('note'), val('coins'), val('xp')], function (r) {
+        A.queue = r; A.history = null; S.pendingReviews = r.pendingCount; render();
+        toast(rv === 'approve' ? 'Approved! Coins sent.' : 'Sent back to try again.'); Snd.play(rv === 'approve' ? 'coin' : 'tap');
+      });
+      return;
+    }
+    var qf = t.getAttribute('data-qfilter'); if (qf) { A.filter = qf; render(); return; }
+    if (t.getAttribute('data-qnew')) {
+      A.edit = { id: '', title: '', stat: 'SKILL', roles: 'ALL', coins: 30, xp: 50, proof: '', repeat: 'monthly', description: '', link: '', startDate: '', endDate: '', maxClaims: '', active: true };
+      render(); window.scrollTo(0, 0); return;
+    }
+    var qe = t.getAttribute('data-qedit');
+    if (qe) { A.edit = Object.assign({}, A.quests.filter(function (x) { return x.id === qe; })[0]); render(); window.scrollTo(0, 0); return; }
+    if (t.getAttribute('data-qcancel')) { A.edit = null; render(); return; }
+    if (t.getAttribute('data-qsave')) {
+      var data = readQuestForm();
+      A.edit = data; // keep what was typed if saving fails
+      t.disabled = true;
+      adminRun('adminSaveQuest', [data], function (r) { A.quests = r.quests; A.edit = null; render(); toast(r.message); refresh(); });
+      return;
+    }
+    var zt = t.getAttribute('data-ztoggle');
+    if (zt) {
+      t.disabled = true;
+      adminRun('adminToggleQuiz', [zt, t.getAttribute('data-on') === '1'], function (r) { A.quizzes = r.quizzes; render(); toast(r.message); refresh(); });
+      return;
+    }
+    var tog = t.getAttribute('data-qtoggle');
+    if (tog) {
+      t.disabled = true;
+      adminRun('adminToggleQuest', [tog, t.getAttribute('data-on') === '1'], function (r) { A.quests = r.quests; render(); toast(r.message); refresh(); });
+      return;
+    }
+  });
+
+  // pick up approvals when the player comes back to the tab
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && S && !O && Date.now() - lastSync > 60000) refresh();
+  });
+
+  // ───────── start ─────────
+  function message(title, text, extra, color) {
+    $('main').innerHTML = '<div class="center"><div class="px" style="font-size:11px;line-height:1.8;color:' + (color || 'var(--text)') + '">' + title + '</div><div class="meta">' + text + '</div>' + (extra || '') + '</div>';
+  }
+  function showLogin(err) {
+    S = null; $('who').textContent = '\u00a0'; $('coins').textContent = '--'; $('adminNav').hidden = true;
+    message('WELCOME, PLAYER', 'Open the personal link from your Rad Quest email, or paste the link (or its code) here.',
+      '<label class="field" style="width:100%;text-align:left"><span>YOUR LINK OR CODE</span><input type="text" id="loginIn" autocomplete="off" autocapitalize="none" spellcheck="false"></label>' +
+      '<div class="err" id="loginErr" role="alert">' + esc(err || '') + '</div><button type="button" class="btn green" id="loginBtn" style="width:100%">START</button>');
+  }
+  function signIn() {
+    var code = codeFrom($('loginIn').value);
+    if (!code) { $('loginErr').textContent = 'That doesn\'t look like a Rad Quest link or code.'; return; }
+    TOKEN = code; store.set('rq_token', code); start();
+  }
+  function start() {
+    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(API_URL)) {
+      message('SETUP NEEDED', 'Put your Apps Script web app URL (it ends in /exec) in config.js on GitHub.', '', 'var(--gold)');
+      return;
+    }
+    if (!TOKEN) { showLogin(''); return; }
+    // 1) paint the last known state straight away
+    try {
+      var saved = JSON.parse(store.get('rq_state') || 'null');
+      if (saved && saved.token === TOKEN && saved.state) { S = saved.state; render(); }
+    } catch (e) { }
+    if (!S) message('<span class="blink">LOADING...</span>', '');
+    // 2) use the answer the loader already fetched, or ask the server for the latest
+    var boot = window.RQ_BOOT; window.RQ_BOOT = null;
+    if (boot && boot.token === TOKEN && (boot.data || boot.error)) {
+      if (boot.error) opened(null, boot.error); else { setOnline(true); lastSync = Date.now(); opened(boot.data); }
+      return;
+    }
+    run('open', [TOKEN], function (d) { opened(d); }, function (m) { opened(null, m); });
+  }
+  function opened(d, m) {
+    if (!d) {
+      if (/not active/.test(m)) { store.del('rq_token'); store.del('rq_state'); TOKEN = ''; showLogin(m); return; }
+      if (S) { toast('Offline: showing your last saved pet.', true); return; }
+      message('CAN\'T START', esc(m), '<button type="button" class="btn gold" id="retryBtn">TRY AGAIN</button>', 'var(--red)');
+      return;
+    }
+    S = d.state; render();
+    if (O) return;
+    if (d.news.length || d.levelUp || d.evolved) queue.push(function () { showNews(d); });
+    if (d.hatch) showHatch(); else if (queue.length) (queue.shift())();
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target && e.target.id === 'loginIn') signIn(); });
+  window.addEventListener('online', function () { setOnline(true); if (S && !O) refresh(); });
+  window.addEventListener('offline', function () { setOnline(false); });
+  start();
+})();
+</script>
+</body>
+</html>
