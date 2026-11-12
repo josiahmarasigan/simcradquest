@@ -3,3 +3,4 @@
 window.RAD_QUEST = {
   API_URL: 'https://script.google.com/macros/s/AKfycbzWPtbjNqt3OHkEGFzAEWKOiEqcKsFtpZmerY_i5irk2WLu8qWALWgpLnwVIV3dbGg/exec'
 };
+
