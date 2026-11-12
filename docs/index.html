@@ -31,6 +31,9 @@
 -->
 <div class="wrap" id="wrap"><div class="t">RAD QUEST</div><div class="m blink">LOADING...</div></div>
 <script>
+// Android offers "install" once, early. Keep it so the app's INSTALL button can use it after it loads.
+window.__rqInstall = null;
+window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__rqInstall = e; });
 (function () {
   var API = String((window.RAD_QUEST && window.RAD_QUEST.API_URL) || '').trim();
   function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
